@@ -18,6 +18,7 @@ use codex_core::protocol::PatchApplyBeginEvent;
 use codex_core::protocol::PatchApplyEndEvent;
 use codex_core::protocol::SessionConfiguredEvent;
 use codex_core::protocol::StreamErrorEvent;
+use codex_core::protocol::SubagentTaskLogEvent;
 use codex_core::protocol::TaskCompleteEvent;
 use codex_core::protocol::TurnAbortReason;
 use codex_core::protocol::TurnDiffEvent;
@@ -181,6 +182,37 @@ impl EventProcessor for EventProcessorWithHumanOutput {
                 if let Some(details) = details {
                     ts_msg!(self, "  {}", details.style(self.dimmed));
                 }
+            }
+            EventMsg::SubagentTaskUpdate(update) => {
+                let status = match update.status {
+                    codex_core::protocol::SubagentTaskStatus::Running => "running",
+                    codex_core::protocol::SubagentTaskStatus::Done => "done",
+                    codex_core::protocol::SubagentTaskStatus::Timeout => "timeout",
+                    codex_core::protocol::SubagentTaskStatus::Failed => "failed",
+                };
+                if let Some(summary) = update.summary {
+                    ts_msg!(self, "subagent {} [{}] {summary}", update.task, status);
+                } else {
+                    ts_msg!(self, "subagent {} [{}]", update.task, status);
+                }
+            }
+            EventMsg::SubagentTaskLog(SubagentTaskLogEvent {
+                task,
+                agent_index,
+                line,
+                ..
+            }) => {
+                let label = if let Some(idx) = agent_index {
+                    format!("subagent {} — {}", idx + 1, task)
+                } else {
+                    format!("subagent — {task}")
+                };
+                ts_msg!(
+                    self,
+                    "{} {}",
+                    label.style(self.magenta).style(self.italic),
+                    line
+                );
             }
             EventMsg::McpStartupUpdate(update) => {
                 let status_text = match update.status {

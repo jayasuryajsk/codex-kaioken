@@ -357,6 +357,17 @@ It is important to remember:
 - You must include a header with your intended action (Add/Delete/Update)
 - You must prefix new lines with `+` even when creating a new file
 
+## Semantic search
+
+- When you need to locate code or docs, call the `semantic_search` tool first; it uses the sgrep index with repo-root defaults and excludes build artefacts for speed.
+- Keep limits modest, add filters like `language=rust` or `path=core/`, and fall back to shell/rg only if semantic_search has no results or indexing has not finished.
+
+## Subagents
+
+- Use `subagent_run` to fan out independent tasks (max 4) with concise names/prompts and optional `cwd`; prefer when work can run in parallel.
+- Child sessions auto-approve (no permission prompts), run with workspace-write/no-network sandbox, and have shell/unified-exec/apply-patch-freeform disabled; default timeout is 60s unless `timeout_ms` is set.
+- When the user asks for “subagents”, “parallel agents”, or multiple agents, actually call `subagent_run` instead of just narrating a plan.
+
 ## `update_plan`
 
 A tool named `update_plan` is available to you. You can use it to keep an up‑to‑date, step‑by‑step plan for the task.

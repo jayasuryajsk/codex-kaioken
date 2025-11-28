@@ -41,6 +41,8 @@ use codex_core::protocol::PatchApplyBeginEvent;
 use codex_core::protocol::RateLimitSnapshot;
 use codex_core::protocol::ReviewRequest;
 use codex_core::protocol::StreamErrorEvent;
+use codex_core::protocol::SubagentTaskLogEvent;
+use codex_core::protocol::SubagentTaskUpdateEvent;
 use codex_core::protocol::TaskCompleteEvent;
 use codex_core::protocol::TokenUsage;
 use codex_core::protocol::TokenUsageInfo;
@@ -69,6 +71,7 @@ use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Wrap;
+use tokio::runtime::Handle;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::JoinHandle;
 use tracing::debug;
@@ -96,6 +99,7 @@ use crate::history_cell::AgentMessageCell;
 use crate::history_cell::HistoryCell;
 use crate::history_cell::McpToolCallCell;
 use crate::history_cell::PlainHistoryCell;
+use crate::history_cell::SubagentTasksCell;
 use crate::markdown::append_markdown;
 use crate::render::Insets;
 use crate::render::renderable::ColumnRenderable;
@@ -103,6 +107,8 @@ use crate::render::renderable::FlexRenderable;
 use crate::render::renderable::Renderable;
 use crate::render::renderable::RenderableExt;
 use crate::render::renderable::RenderableItem;
+use crate::semantic::SemanticStatus;
+use crate::semantic::find_sgrep_binary;
 use crate::slash_command::SlashCommand;
 use crate::status::RateLimitSnapshotDisplay;
 use crate::text_formatting::truncate_text;
@@ -115,9 +121,12 @@ use self::agent::spawn_agent_from_existing;
 mod session_header;
 use self::session_header::SessionHeader;
 use crate::streaming::controller::StreamController;
+use std::env;
 use std::path::Path;
+use std::process::Stdio;
 
 use chrono::Local;
+use codex_ansi_escape::ansi_escape_line;
 use codex_common::approval_presets::ApprovalPreset;
 use codex_common::approval_presets::builtin_approval_presets;
 use codex_common::model_presets::ModelPreset;
@@ -131,6 +140,9 @@ use codex_core::protocol_config_types::ReasoningEffort as ReasoningEffortConfig;
 use codex_file_search::FileMatch;
 use codex_protocol::plan_tool::UpdatePlanArgs;
 use strum::IntoEnumIterator;
+use tokio::io::AsyncBufReadExt;
+use tokio::io::BufReader;
+use tokio::process::Command;
 
 const USER_SHELL_COMMAND_HELP_TITLE: &str = "Prefix a command with ! to run it locally";
 const USER_SHELL_COMMAND_HELP_HINT: &str = "Example: !ls";
@@ -284,6 +296,8 @@ pub(crate) struct ChatWidget {
     suppressed_exec_calls: HashSet<String>,
     last_unified_wait: Option<UnifiedExecWaitState>,
     task_complete_pending: bool,
+    semantic_warmup_started: bool,
+    semantic_watch: Option<tokio::process::Child>,
     mcp_startup_status: Option<HashMap<String, McpStartupStatus>>,
     // Queue of interruptive UI events deferred during an active write cycle
     interrupts: InterruptManager,
@@ -815,6 +829,66 @@ impl ChatWidget {
         self.defer_or_handle(|q| q.push_mcp_end(ev), |s| s.handle_mcp_end_now(ev2));
     }
 
+    fn on_subagent_task_update(&mut self, ev: SubagentTaskUpdateEvent) {
+        let needs_new_cell = self
+            .active_cell
+            .as_ref()
+            .and_then(|cell| cell.as_any().downcast_ref::<SubagentTasksCell>())
+            .map(|cell| cell.call_id != ev.call_id)
+            .unwrap_or(true);
+
+        if needs_new_cell {
+            self.flush_active_cell();
+            self.active_cell = Some(Box::new(SubagentTasksCell::new(
+                ev.call_id.clone(),
+                self.config.animations,
+            )));
+        }
+
+        if let Some(cell) = self
+            .active_cell
+            .as_mut()
+            .and_then(|c| c.as_any_mut().downcast_mut::<SubagentTasksCell>())
+        {
+            cell.update_task(ev.task, ev.status, ev.summary, None);
+            if !cell.has_running() {
+                self.flush_active_cell();
+            } else {
+                self.request_redraw();
+            }
+        }
+    }
+
+    fn on_subagent_task_log(&mut self, ev: SubagentTaskLogEvent) {
+        let needs_new_cell = self
+            .active_cell
+            .as_ref()
+            .and_then(|cell| cell.as_any().downcast_ref::<SubagentTasksCell>())
+            .map(|cell| cell.call_id != ev.call_id)
+            .unwrap_or(true);
+
+        if needs_new_cell {
+            self.flush_active_cell();
+            self.active_cell = Some(Box::new(SubagentTasksCell::new(
+                ev.call_id.clone(),
+                self.config.animations,
+            )));
+        }
+
+        if let Some(cell) = self
+            .active_cell
+            .as_mut()
+            .and_then(|c| c.as_any_mut().downcast_mut::<SubagentTasksCell>())
+        {
+            let agent_label = ev
+                .agent_index
+                .and_then(|idx| usize::try_from(idx).ok())
+                .map(|idx| format!("Agent {} — {}", idx + 1, ev.task));
+            cell.append_log(ev.task, ev.line, agent_label);
+            self.request_redraw();
+        }
+    }
+
     fn on_web_search_begin(&mut self, _ev: WebSearchBeginEvent) {
         self.flush_answer_stream_with_separator();
     }
@@ -1243,6 +1317,8 @@ impl ChatWidget {
             suppressed_exec_calls: HashSet::new(),
             last_unified_wait: None,
             task_complete_pending: false,
+            semantic_warmup_started: false,
+            semantic_watch: None,
             mcp_startup_status: None,
             interrupts: InterruptManager::new(),
             reasoning_buffer: String::new(),
@@ -1263,6 +1339,7 @@ impl ChatWidget {
         };
 
         widget.prefetch_rate_limits();
+        widget.start_semantic_warmup();
 
         widget
     }
@@ -1320,6 +1397,8 @@ impl ChatWidget {
             suppressed_exec_calls: HashSet::new(),
             last_unified_wait: None,
             task_complete_pending: false,
+            semantic_warmup_started: false,
+            semantic_watch: None,
             mcp_startup_status: None,
             interrupts: InterruptManager::new(),
             reasoning_buffer: String::new(),
@@ -1340,6 +1419,7 @@ impl ChatWidget {
         };
 
         widget.prefetch_rate_limits();
+        widget.start_semantic_warmup();
 
         widget
     }
@@ -1771,6 +1851,8 @@ impl ChatWidget {
             EventMsg::ViewImageToolCall(ev) => self.on_view_image_tool_call(ev),
             EventMsg::McpToolCallBegin(ev) => self.on_mcp_tool_call_begin(ev),
             EventMsg::McpToolCallEnd(ev) => self.on_mcp_tool_call_end(ev),
+            EventMsg::SubagentTaskUpdate(ev) => self.on_subagent_task_update(ev),
+            EventMsg::SubagentTaskLog(ev) => self.on_subagent_task_log(ev),
             EventMsg::WebSearchBegin(ev) => self.on_web_search_begin(ev),
             EventMsg::WebSearchEnd(ev) => self.on_web_search_end(ev),
             EventMsg::GetHistoryEntryResponse(ev) => self.on_get_history_entry_response(ev),
@@ -1979,6 +2061,74 @@ impl ChatWidget {
         });
 
         self.rate_limit_poller = Some(handle);
+    }
+
+    fn start_semantic_warmup(&mut self) {
+        if self.semantic_warmup_started {
+            return;
+        }
+        self.semantic_warmup_started = true;
+
+        let Some(sgrep_bin) = find_sgrep_binary() else {
+            self.bottom_pane
+                .set_semantic_status(SemanticStatus::Missing, Some("sgrep not found".to_string()));
+            return;
+        };
+
+        self.bottom_pane
+            .set_semantic_status(SemanticStatus::Indexing, Some("indexing…".to_string()));
+
+        if let Ok(handle) = Handle::try_current() {
+            let app_event_tx = self.app_event_tx.clone();
+            let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            let watch_started = self.maybe_start_semantic_watch(sgrep_bin.clone(), cwd.clone());
+            if watch_started {
+                self.bottom_pane
+                    .set_semantic_status(SemanticStatus::Indexing, Some("watching".to_string()));
+            }
+            handle.spawn(async move {
+                run_semantic_warmup(sgrep_bin, cwd, app_event_tx).await;
+            });
+        } else {
+            self.bottom_pane
+                .set_semantic_status(SemanticStatus::Ready, None);
+        }
+    }
+
+    pub(crate) fn set_semantic_status(&mut self, status: SemanticStatus, message: Option<String>) {
+        self.bottom_pane.set_semantic_status(status, message);
+    }
+
+    pub(crate) fn tick(&mut self) {
+        self.bottom_pane.tick();
+    }
+
+    fn maybe_start_semantic_watch(&mut self, sgrep_bin: PathBuf, cwd: PathBuf) -> bool {
+        if std::env::var("CODEX_SEMANTIC_WATCH").as_deref() == Ok("0") {
+            return false;
+        }
+
+        let mut command = tokio::process::Command::new(sgrep_bin);
+        command.current_dir(cwd).arg("watch").arg("--path").arg(".");
+        apply_sgrep_env(&mut command);
+        command.stdout(Stdio::null()).stderr(Stdio::null());
+
+        match command.spawn() {
+            Ok(child) => {
+                self.semantic_watch = Some(child);
+                true
+            }
+            Err(err) => {
+                debug!(error = ?err, "failed to start sgrep watch");
+                false
+            }
+        }
+    }
+
+    fn stop_semantic_watch(&mut self) {
+        if let Some(mut child) = self.semantic_watch.take() {
+            let _ = child.kill();
+        }
     }
 
     fn lower_cost_preset(&self) -> Option<ModelPreset> {
@@ -3079,6 +3229,7 @@ impl ChatWidget {
 impl Drop for ChatWidget {
     fn drop(&mut self) {
         self.stop_rate_limit_poller();
+        self.stop_semantic_watch();
     }
 }
 
@@ -3203,6 +3354,118 @@ fn extract_first_bold(s: &str) -> Option<String> {
         i += 1;
     }
     None
+}
+
+async fn run_semantic_warmup(sgrep_bin: PathBuf, cwd: PathBuf, app_event_tx: AppEventSender) {
+    let mut command = Command::new(sgrep_bin);
+    command
+        .current_dir(&cwd)
+        .arg("search")
+        .arg("--json")
+        .arg("--limit")
+        .arg("1")
+        .arg("--path")
+        .arg(&cwd)
+        .arg("fn")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    apply_sgrep_env(&mut command);
+
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            app_event_tx.send(AppEvent::SemanticStatusUpdate(
+                SemanticStatus::Missing,
+                Some(format!("sgrep failed to start: {err}")),
+            ));
+            return;
+        }
+    };
+
+    if let Some(stdout) = child.stdout.take() {
+        let tx = app_event_tx.clone();
+        tokio::spawn(async move { stream_progress(stdout, tx).await });
+    }
+    if let Some(stderr) = child.stderr.take() {
+        let tx = app_event_tx.clone();
+        tokio::spawn(async move { stream_progress(stderr, tx).await });
+    }
+
+    let status = tokio::time::timeout(Duration::from_secs(180), child.wait()).await;
+    match status {
+        Ok(Ok(exit)) if exit.success() => {
+            app_event_tx.send(AppEvent::SemanticStatusUpdate(SemanticStatus::Ready, None));
+        }
+        Ok(Ok(exit)) => {
+            app_event_tx.send(AppEvent::SemanticStatusUpdate(
+                SemanticStatus::Missing,
+                Some(format!("sgrep exited with status {exit}")),
+            ));
+        }
+        Ok(Err(err)) => {
+            app_event_tx.send(AppEvent::SemanticStatusUpdate(
+                SemanticStatus::Missing,
+                Some(format!("sgrep failed: {err}")),
+            ));
+        }
+        Err(_) => {
+            app_event_tx.send(AppEvent::SemanticStatusUpdate(
+                SemanticStatus::Missing,
+                Some("sgrep warmup timed out".to_string()),
+            ));
+        }
+    }
+}
+
+async fn stream_progress<R: tokio::io::AsyncRead + Unpin>(reader: R, app_event_tx: AppEventSender) {
+    let mut lines = BufReader::new(reader).lines();
+    while let Ok(Some(line)) = lines.next_line().await {
+        if let Some(clean) = clean_progress_line(&line) {
+            app_event_tx.send(AppEvent::SemanticStatusUpdate(
+                SemanticStatus::Indexing,
+                Some(clean),
+            ));
+        }
+    }
+}
+
+fn clean_progress_line(line: &str) -> Option<String> {
+    let stripped = ansi_escape_line(&line.replace('\r', "\n"));
+    let mut text = String::new();
+    for span in stripped.spans {
+        text.push_str(&span.content);
+    }
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    if let Some(idx) = trimmed.find("Indexing files (") {
+        let short = &trimmed[idx..];
+        return Some(short.to_string());
+    }
+
+    if trimmed.contains("no index found")
+        || trimmed.contains("Building index")
+        || trimmed.contains("Full indexing")
+    {
+        return Some("indexing…".to_string());
+    }
+
+    None
+}
+
+fn apply_sgrep_env(command: &mut Command) {
+    for key in [
+        "SGREP_CPU_PRESET",
+        "SGREP_DEVICE",
+        "SGREP_EMBEDDER_POOL_SIZE",
+        "SGREP_MAX_THREADS",
+    ] {
+        if let Ok(value) = env::var(key) {
+            command.env(key, value);
+        }
+    }
 }
 
 async fn fetch_rate_limits(base_url: String, auth: CodexAuth) -> Option<RateLimitSnapshot> {

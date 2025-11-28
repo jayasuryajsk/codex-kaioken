@@ -292,7 +292,7 @@ mod tests {
     #[test]
     fn test_get_codex_user_agent() {
         let user_agent = get_codex_user_agent();
-        assert!(user_agent.starts_with("codex_cli_rs/"));
+        assert!(user_agent.starts_with(&format!("{}/", originator().value)));
     }
 
     #[tokio::test]
@@ -333,7 +333,10 @@ mod tests {
         let originator_header = headers
             .get("originator")
             .expect("originator header missing");
-        assert_eq!(originator_header.to_str().unwrap(), "codex_cli_rs");
+        assert_eq!(
+            originator_header.to_str().unwrap(),
+            originator().value.as_str()
+        );
 
         // User-Agent matches the computed Codex UA for that originator
         let expected_ua = get_codex_user_agent();
@@ -345,23 +348,23 @@ mod tests {
 
     #[test]
     fn test_invalid_suffix_is_sanitized() {
-        let prefix = "codex_cli_rs/0.0.0";
+        let prefix = format!("{}/0.0.0", originator().value);
         let suffix = "bad\rsuffix";
 
         assert_eq!(
-            sanitize_user_agent(format!("{prefix} ({suffix})"), prefix),
-            "codex_cli_rs/0.0.0 (bad_suffix)"
+            sanitize_user_agent(format!("{prefix} ({suffix})"), &prefix),
+            format!("{prefix} (bad_suffix)")
         );
     }
 
     #[test]
     fn test_invalid_suffix_is_sanitized2() {
-        let prefix = "codex_cli_rs/0.0.0";
+        let prefix = format!("{}/0.0.0", originator().value);
         let suffix = "bad\0suffix";
 
         assert_eq!(
-            sanitize_user_agent(format!("{prefix} ({suffix})"), prefix),
-            "codex_cli_rs/0.0.0 (bad_suffix)"
+            sanitize_user_agent(format!("{prefix} ({suffix})"), &prefix),
+            format!("{prefix} (bad_suffix)")
         );
     }
 
@@ -370,9 +373,10 @@ mod tests {
     fn test_macos() {
         use regex_lite::Regex;
         let user_agent = get_codex_user_agent();
-        let re = Regex::new(
-            r"^codex_cli_rs/\d+\.\d+\.\d+ \(Mac OS \d+\.\d+\.\d+; (x86_64|arm64)\) (\S+)$",
-        )
+        let re = Regex::new(&format!(
+            r"^{}/\d+\.\d+\.\d+ \(Mac OS \d+\.\d+\.\d+; (x86_64|arm64)\) (\S+)$",
+            regex_lite::escape(originator().value.as_str())
+        ))
         .unwrap();
         assert!(re.is_match(&user_agent));
     }

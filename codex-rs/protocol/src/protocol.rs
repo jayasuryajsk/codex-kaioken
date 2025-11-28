@@ -578,6 +578,53 @@ pub enum EventMsg {
     AgentMessageContentDelta(AgentMessageContentDeltaEvent),
     ReasoningContentDelta(ReasoningContentDeltaEvent),
     ReasoningRawContentDelta(ReasoningRawContentDeltaEvent),
+
+    /// Progress updates for subagent tasks spawned via the `subagent_run` tool.
+    SubagentTaskUpdate(SubagentTaskUpdateEvent),
+    /// Log lines streamed from subagent tasks.
+    SubagentTaskLog(SubagentTaskLogEvent),
+}
+
+/// Status of an individual subagent task.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS, PartialEq, Eq, Display)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
+pub enum SubagentTaskStatus {
+    Running,
+    Done,
+    Timeout,
+    Failed,
+}
+
+/// Update describing the state of a subagent task.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub struct SubagentTaskUpdateEvent {
+    /// Tool call id that launched the subagents.
+    pub call_id: String,
+    /// Task label provided by the tool arguments.
+    pub task: String,
+    /// Current status of the task.
+    pub status: SubagentTaskStatus,
+    /// Optional short summary or last output line.
+    pub summary: Option<String>,
+}
+
+/// Streaming log entry from a subagent task.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub struct SubagentTaskLogEvent {
+    /// Tool call id that launched the subagents.
+    pub call_id: String,
+    /// Task label provided by the tool arguments.
+    pub task: String,
+    /// Optional index of the subagent (0-based).
+    pub agent_index: Option<i64>,
+    /// Human-readable log line describing what the subagent is doing.
+    pub line: String,
 }
 
 /// Codex errors that we expose to clients.

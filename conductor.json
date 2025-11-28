@@ -1,0 +1,6 @@
+{
+    "scripts": {
+        "setup": "",
+        "run": "just install-kaioken && hash -r"
+    }
+}

@@ -6,6 +6,7 @@ use crate::bottom_pane::queued_user_messages::QueuedUserMessages;
 use crate::render::renderable::FlexRenderable;
 use crate::render::renderable::Renderable;
 use crate::render::renderable::RenderableItem;
+use crate::semantic::SemanticStatus;
 use crate::tui::FrameRequester;
 use bottom_pane_view::BottomPaneView;
 use codex_file_search::FileMatch;
@@ -76,6 +77,9 @@ pub(crate) struct BottomPane {
     /// Queued user messages to show above the composer while a turn is running.
     queued_user_messages: QueuedUserMessages,
     context_window_percent: Option<i64>,
+    semantic_status: SemanticStatus,
+    semantic_message: Option<String>,
+    semantic_spinner: SemanticSpinner,
 }
 
 pub(crate) struct BottomPaneParams {
@@ -99,7 +103,7 @@ impl BottomPane {
             disable_paste_burst,
             animations_enabled,
         } = params;
-        Self {
+        let mut pane = Self {
             composer: ChatComposer::new(
                 has_input_focus,
                 app_event_tx.clone(),
@@ -118,7 +122,16 @@ impl BottomPane {
             esc_backtrack_hint: false,
             animations_enabled,
             context_window_percent: None,
-        }
+            semantic_status: SemanticStatus::Ready,
+            semantic_message: None,
+            semantic_spinner: SemanticSpinner::new(),
+        };
+        pane.composer.set_semantic_status(
+            pane.semantic_status,
+            pane.semantic_spinner.frame(),
+            pane.semantic_message.clone(),
+        );
+        pane
     }
 
     pub fn status_widget(&self) -> Option<&StatusIndicatorWidget> {
@@ -354,6 +367,43 @@ impl BottomPane {
         self.request_redraw();
     }
 
+    pub(crate) fn set_semantic_status(&mut self, status: SemanticStatus, message: Option<String>) {
+        if self.semantic_status == status && self.semantic_message == message {
+            return;
+        }
+
+        self.semantic_status = status;
+        self.semantic_message = message;
+        if matches!(status, SemanticStatus::Indexing) {
+            self.semantic_spinner.reset();
+        }
+        self.composer.set_semantic_status(
+            status,
+            self.semantic_spinner.frame(),
+            self.semantic_message.clone(),
+        );
+        self.request_redraw();
+        if self.animations_enabled && matches!(status, SemanticStatus::Indexing) {
+            self.request_redraw_in(SemanticSpinner::tick_duration());
+        }
+    }
+
+    pub(crate) fn tick(&mut self) {
+        if !matches!(self.semantic_status, SemanticStatus::Indexing) {
+            return;
+        }
+
+        if self.semantic_spinner.advance() {
+            self.composer
+                .set_semantic_spinner_frame(self.semantic_spinner.frame());
+            self.request_redraw();
+        }
+
+        if self.animations_enabled {
+            self.request_redraw_in(SemanticSpinner::tick_duration());
+        }
+    }
+
     /// Show a generic list selection view with the provided items.
     pub(crate) fn show_selection_view(&mut self, params: list_selection_view::SelectionViewParams) {
         let view = list_selection_view::ListSelectionView::new(params, self.app_event_tx.clone());
@@ -517,6 +567,36 @@ impl Renderable for BottomPane {
     }
     fn cursor_pos(&self, area: Rect) -> Option<(u16, u16)> {
         self.as_renderable().cursor_pos(area)
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct SemanticSpinner {
+    frame: usize,
+}
+
+impl SemanticSpinner {
+    const FRAMES: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+    fn new() -> Self {
+        Self { frame: 0 }
+    }
+
+    fn reset(&mut self) {
+        self.frame = 0;
+    }
+
+    fn advance(&mut self) -> bool {
+        self.frame = (self.frame + 1) % Self::FRAMES.len();
+        true
+    }
+
+    fn frame(&self) -> char {
+        Self::FRAMES[self.frame]
+    }
+
+    fn tick_duration() -> Duration {
+        Duration::from_millis(120)
     }
 }
 

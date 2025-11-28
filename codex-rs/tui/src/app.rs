@@ -424,6 +424,7 @@ impl App {
                     {
                         return Ok(true);
                     }
+                    self.chat_widget.tick();
                     tui.draw(
                         self.chat_widget.desired_height(tui.terminal.size()?.width),
                         |frame| {
@@ -555,6 +556,9 @@ impl App {
             }
             AppEvent::FileSearchResult { query, matches } => {
                 self.chat_widget.apply_file_search_result(query, matches);
+            }
+            AppEvent::SemanticStatusUpdate(status, message) => {
+                self.chat_widget.set_semantic_status(status, message);
             }
             AppEvent::RateLimitSnapshotFetched(snapshot) => {
                 self.chat_widget.on_rate_limit_snapshot(Some(snapshot));
