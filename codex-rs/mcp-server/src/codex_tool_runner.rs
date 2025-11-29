@@ -214,6 +214,9 @@ async fn run_codex_tool_session_inner(
                     EventMsg::SubagentTaskLog(_) => {
                         continue;
                     }
+                    EventMsg::SubagentHistoryItem(_) => {
+                        continue;
+                    }
                     EventMsg::ElicitationRequest(_) => {
                         // TODO: forward elicitation requests to the client?
                         continue;

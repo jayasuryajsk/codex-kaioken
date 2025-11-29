@@ -583,6 +583,8 @@ pub enum EventMsg {
     SubagentTaskUpdate(SubagentTaskUpdateEvent),
     /// Log lines streamed from subagent tasks.
     SubagentTaskLog(SubagentTaskLogEvent),
+    /// Tool/history events streamed from subagent tasks.
+    SubagentHistoryItem(SubagentHistoryItemEvent),
 }
 
 /// Status of an individual subagent task.
@@ -625,6 +627,21 @@ pub struct SubagentTaskLogEvent {
     pub agent_index: Option<i64>,
     /// Human-readable log line describing what the subagent is doing.
     pub line: String,
+}
+
+/// History item forwarded from a subagent task.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub struct SubagentHistoryItemEvent {
+    /// Tool call id that launched the subagents.
+    pub call_id: String,
+    /// Task label provided by the tool arguments.
+    pub task: String,
+    /// Optional index of the subagent (0-based).
+    pub agent_index: Option<i64>,
+    /// Underlying event emitted by the subagent.
+    pub event: Box<EventMsg>,
 }
 
 /// Codex errors that we expose to clients.

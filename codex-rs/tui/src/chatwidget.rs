@@ -41,6 +41,7 @@ use codex_core::protocol::PatchApplyBeginEvent;
 use codex_core::protocol::RateLimitSnapshot;
 use codex_core::protocol::ReviewRequest;
 use codex_core::protocol::StreamErrorEvent;
+use codex_core::protocol::SubagentHistoryItemEvent;
 use codex_core::protocol::SubagentTaskLogEvent;
 use codex_core::protocol::SubagentTaskUpdateEvent;
 use codex_core::protocol::TaskCompleteEvent;
@@ -96,12 +97,14 @@ use crate::exec_cell::new_active_exec_command;
 use crate::get_git_diff::get_git_diff;
 use crate::history_cell;
 use crate::history_cell::AgentMessageCell;
+use crate::history_cell::CompositeHistoryCell;
 use crate::history_cell::HistoryCell;
 use crate::history_cell::McpToolCallCell;
 use crate::history_cell::PlainHistoryCell;
 use crate::history_cell::SubagentTasksCell;
 use crate::markdown::append_markdown;
 use crate::render::Insets;
+use crate::render::line_utils::prefix_lines;
 use crate::render::renderable::ColumnRenderable;
 use crate::render::renderable::FlexRenderable;
 use crate::render::renderable::Renderable;
@@ -885,6 +888,50 @@ impl ChatWidget {
                 .and_then(|idx| usize::try_from(idx).ok())
                 .map(|idx| format!("Agent {} — {}", idx + 1, ev.task));
             cell.append_log(ev.task, ev.line, agent_label);
+            self.request_redraw();
+        }
+    }
+
+    fn on_subagent_history_item(&mut self, ev: SubagentHistoryItemEvent) {
+        let needs_new_cell = self
+            .active_cell
+            .as_ref()
+            .and_then(|cell| cell.as_any().downcast_ref::<SubagentTasksCell>())
+            .map(|cell| cell.call_id != ev.call_id)
+            .unwrap_or(true);
+
+        if needs_new_cell {
+            self.flush_active_cell();
+            self.active_cell = Some(Box::new(SubagentTasksCell::new(
+                ev.call_id.clone(),
+                self.config.animations,
+            )));
+        }
+
+        let agent_label = ev
+            .agent_index
+            .and_then(|idx| usize::try_from(idx).ok())
+            .map(|idx| format!("Agent {} — {}", idx + 1, ev.task))
+            .unwrap_or_else(|| ev.task.clone());
+
+        if let Some(cell) = self
+            .active_cell
+            .as_mut()
+            .and_then(|c| c.as_any_mut().downcast_mut::<SubagentTasksCell>())
+        {
+            for line in subagent_history_log_lines(&ev.event) {
+                cell.append_log(ev.task.clone(), line, Some(agent_label.clone()));
+            }
+        }
+
+        if build_subagent_history_cell(
+            agent_label,
+            &ev.event,
+            &self.config.cwd,
+            self.config.animations,
+        )
+        .is_some()
+        {
             self.request_redraw();
         }
     }
@@ -1853,6 +1900,7 @@ impl ChatWidget {
             EventMsg::McpToolCallEnd(ev) => self.on_mcp_tool_call_end(ev),
             EventMsg::SubagentTaskUpdate(ev) => self.on_subagent_task_update(ev),
             EventMsg::SubagentTaskLog(ev) => self.on_subagent_task_log(ev),
+            EventMsg::SubagentHistoryItem(ev) => self.on_subagent_history_item(ev),
             EventMsg::WebSearchBegin(ev) => self.on_web_search_begin(ev),
             EventMsg::WebSearchEnd(ev) => self.on_web_search_end(ev),
             EventMsg::GetHistoryEntryResponse(ev) => self.on_get_history_entry_response(ev),
@@ -2127,7 +2175,7 @@ impl ChatWidget {
 
     fn stop_semantic_watch(&mut self) {
         if let Some(mut child) = self.semantic_watch.take() {
-            let _ = child.kill();
+            let _ = child.start_kill();
         }
     }
 
@@ -3525,6 +3573,202 @@ pub(crate) fn show_review_commit_picker_with_entries(
         search_placeholder: Some("Type to search commits".to_string()),
         ..Default::default()
     });
+}
+
+fn build_subagent_history_cell(
+    label: String,
+    event: &EventMsg,
+    cwd: &Path,
+    animations_enabled: bool,
+) -> Option<Box<dyn HistoryCell>> {
+    let cell: Option<Box<dyn HistoryCell>> = match event {
+        EventMsg::ExecCommandEnd(ev) => {
+            let mut cell = new_active_exec_command(
+                ev.call_id.clone(),
+                ev.command.clone(),
+                ev.parsed_cmd.clone(),
+                ev.source,
+                ev.interaction_input.clone(),
+                animations_enabled,
+            );
+            let aggregated_output = if ev.aggregated_output.is_empty() {
+                let mut combined = String::new();
+                if !ev.stdout.is_empty() {
+                    combined.push_str(&ev.stdout);
+                }
+                if !ev.stderr.is_empty() {
+                    if !combined.is_empty() {
+                        combined.push('\n');
+                    }
+                    combined.push_str(&ev.stderr);
+                }
+                combined
+            } else {
+                ev.aggregated_output.clone()
+            };
+            let output = CommandOutput {
+                exit_code: ev.exit_code,
+                formatted_output: ev.formatted_output.clone(),
+                aggregated_output,
+            };
+            cell.complete_call(&ev.call_id, output, ev.duration);
+            Some(Box::new(cell))
+        }
+        EventMsg::PatchApplyBegin(ev) => Some(Box::new(history_cell::new_patch_event(
+            ev.changes.clone(),
+            cwd,
+        ))),
+        EventMsg::PatchApplyEnd(ev) => {
+            if ev.success {
+                None
+            } else {
+                Some(Box::new(history_cell::new_patch_apply_failure(
+                    ev.stderr.clone(),
+                )))
+            }
+        }
+        EventMsg::McpToolCallEnd(ev) => {
+            let mut cell = McpToolCallCell::new(
+                ev.call_id.clone(),
+                ev.invocation.clone(),
+                animations_enabled,
+            );
+            let image_cell = cell.complete(ev.duration, ev.result.clone());
+            let mut parts: Vec<Box<dyn HistoryCell>> = vec![Box::new(cell)];
+            if let Some(img) = image_cell {
+                parts.push(img);
+            }
+            Some(Box::new(CompositeHistoryCell::new(parts)))
+        }
+        EventMsg::WebSearchEnd(ev) => Some(Box::new(history_cell::new_web_search_call(format!(
+            "Searched: {}",
+            ev.query
+        )))),
+        EventMsg::AgentMessage(AgentMessageEvent { message }) => {
+            let mut lines = Vec::new();
+            append_markdown(message, None, &mut lines);
+            Some(Box::new(AgentMessageCell::new(lines, true)))
+        }
+        EventMsg::TaskComplete(ev) => ev.last_agent_message.as_ref().map(|message| {
+            let mut lines: Vec<Line<'static>> = Vec::new();
+            append_markdown(message, None, &mut lines);
+            Box::new(AgentMessageCell::new(lines, true)) as Box<dyn HistoryCell>
+        }),
+        _ => None,
+    };
+
+    cell.map(|inner| Box::new(SubagentHistoryCell { label, inner }) as Box<dyn HistoryCell>)
+}
+
+fn subagent_history_log_lines(event: &EventMsg) -> Vec<String> {
+    match event {
+        EventMsg::ExecCommandBegin(_) | EventMsg::ExecCommandOutputDelta(_) => Vec::new(),
+        EventMsg::ExecCommandEnd(ev) => {
+            if let Some(lines) = explore_lines(&ev.parsed_cmd) {
+                let mut out = Vec::new();
+                out.push("**Explored**".to_string());
+                out.extend(lines);
+                return out;
+            }
+            let cmd = ev.command.join(" ");
+            vec![format!(
+                "**Exec** {cmd} \u{2192} exit {} ({:.1}s)",
+                ev.exit_code,
+                ev.duration.as_secs_f32()
+            )]
+        }
+        EventMsg::PatchApplyBegin(ev) => {
+            vec![format!(
+                "**apply_patch** begin: {} change(s)",
+                ev.changes.len()
+            )]
+        }
+        EventMsg::PatchApplyEnd(ev) => {
+            if ev.success {
+                vec![format!(
+                    "**apply_patch** success: {} change(s)",
+                    ev.changes.len()
+                )]
+            } else if ev.stderr.trim().is_empty() {
+                vec![format!(
+                    "**apply_patch** failed: {} change(s)",
+                    ev.changes.len()
+                )]
+            } else {
+                let snippet = truncate_text(&ev.stderr, 120);
+                vec![format!("**apply_patch** failed: {snippet}")]
+            }
+        }
+        EventMsg::McpToolCallEnd(ev) => {
+            let status = if ev.is_success() { "ok" } else { "err" };
+            vec![format!(
+                "**MCP** {status}: {}::{}",
+                ev.invocation.server, ev.invocation.tool
+            )]
+        }
+        EventMsg::WebSearchEnd(ev) => vec![format!("**Web search** {}", ev.query)],
+        EventMsg::AgentMessage(_) | EventMsg::TaskComplete(_) => Vec::new(),
+        _ => Vec::new(),
+    }
+}
+
+fn explore_lines(parsed: &[ParsedCommand]) -> Option<Vec<String>> {
+    if parsed.is_empty()
+        || parsed.iter().any(|p| {
+            !matches!(
+                p,
+                ParsedCommand::Read { .. }
+                    | ParsedCommand::ListFiles { .. }
+                    | ParsedCommand::Search { .. }
+                    | ParsedCommand::Unknown { .. }
+            )
+        })
+    {
+        return None;
+    }
+
+    let mut lines: Vec<String> = Vec::new();
+    for cmd in parsed {
+        match cmd {
+            ParsedCommand::Read { name, .. } => lines.push(format!("**Read** {name}")),
+            ParsedCommand::ListFiles { cmd, path } => {
+                let label = path.clone().unwrap_or(cmd.clone());
+                lines.push(format!("**List** {label}"));
+            }
+            ParsedCommand::Search { cmd, query, path } => {
+                if let Some(q) = query {
+                    match path {
+                        Some(p) => lines.push(format!("**Search** {q} in {p}")),
+                        None => lines.push(format!("**Search** {q}")),
+                    }
+                } else {
+                    lines.push(format!("**Search** {cmd}"));
+                }
+            }
+            ParsedCommand::Unknown { cmd } => lines.push(format!("**Run** {cmd}")),
+        }
+    }
+
+    if lines.is_empty() { None } else { Some(lines) }
+}
+
+#[derive(Debug)]
+struct SubagentHistoryCell {
+    label: String,
+    inner: Box<dyn HistoryCell>,
+}
+
+impl HistoryCell for SubagentHistoryCell {
+    fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
+        let mut lines: Vec<Line<'static>> =
+            vec![vec!["Subagent".bold(), " ".into(), self.label.clone().bold()].into()];
+        let inner_width = width.saturating_sub(4);
+        let inner_lines = self.inner.display_lines(inner_width);
+        if !inner_lines.is_empty() {
+            lines.extend(prefix_lines(inner_lines, "  └ ".dim(), "    ".into()));
+        }
+        lines
+    }
 }
 
 #[cfg(test)]

@@ -214,6 +214,9 @@ impl EventProcessor for EventProcessorWithHumanOutput {
                     line
                 );
             }
+            EventMsg::SubagentHistoryItem(_) => {
+                // History items are rendered in the TUI; skip in CLI streamer for now.
+            }
             EventMsg::McpStartupUpdate(update) => {
                 let status_text = match update.status {
                     codex_core::protocol::McpStartupStatus::Starting => "starting".to_string(),

@@ -591,7 +591,7 @@ impl SemanticSpinner {
         true
     }
 
-    fn frame(&self) -> char {
+    fn frame(self) -> char {
         Self::FRAMES[self.frame]
     }
 

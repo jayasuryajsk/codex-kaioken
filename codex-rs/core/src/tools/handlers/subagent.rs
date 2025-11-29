@@ -4,7 +4,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use codex_protocol::protocol::ExecOutputStream;
 use codex_protocol::protocol::InitialHistory;
 use codex_protocol::protocol::Op;
 use codex_protocol::protocol::SessionSource;
@@ -19,7 +18,6 @@ use crate::config::Config;
 use crate::function_tool::FunctionCallError;
 use crate::protocol::AskForApproval;
 use crate::protocol::EventMsg;
-use crate::protocol::SubagentTaskLogEvent;
 use crate::protocol::SubagentTaskStatus;
 use crate::protocol::SubagentTaskUpdateEvent;
 use crate::tools::context::ToolInvocation;
@@ -55,7 +53,6 @@ struct SubagentResult {
 
 const DEFAULT_CHILD_TIMEOUT: Option<Duration> = None;
 const MAX_TASKS: usize = 4;
-const MAX_STREAMED_CHARS: usize = 200;
 
 #[async_trait]
 impl ToolHandler for SubagentHandler {
@@ -125,7 +122,7 @@ impl ToolHandler for SubagentHandler {
                     SubagentTaskStatus::Running,
                     &call_id,
                     &task.name,
-                    Some(task.prompt.clone()),
+                    None,
                 )
                 .await;
                 run_subagent_task(
@@ -221,8 +218,8 @@ async fn run_subagent_task(
 
         let mut last_message: Option<String> = None;
         while let Ok(event) = codex.rx_event.recv().await {
-            let debug_msg = format!("{:?}", &event.msg);
-            match event.msg {
+            let child_msg = event.msg.clone();
+            match &child_msg {
                 crate::protocol::EventMsg::AgentMessage(ev) => {
                     last_message = Some(ev.message.clone());
                     send_subagent_update(
@@ -234,199 +231,42 @@ async fn run_subagent_task(
                         Some(ev.message.clone()),
                     )
                     .await;
-                    send_subagent_log(
+                }
+                crate::protocol::EventMsg::AgentMessageContentDelta(_)
+                | crate::protocol::EventMsg::ReasoningContentDelta(_) => {}
+                crate::protocol::EventMsg::TaskComplete(ev) => {
+                    last_message = ev.last_agent_message.clone();
+                    send_subagent_history_item(
                         &session,
                         &turn,
                         &call_id,
                         &fut_task_name,
                         Some(agent_index),
-                        ev.message,
+                        child_msg.clone(),
                     )
                     .await;
-                }
-                crate::protocol::EventMsg::AgentMessageContentDelta(ev) => {
-                    let text = ev.delta.trim();
-                    if !text.is_empty() {
-                        send_subagent_log(
-                            &session,
-                            &turn,
-                            &call_id,
-                            &fut_task_name,
-                            Some(agent_index),
-                            text.to_string(),
-                        )
-                        .await;
-                    }
-                }
-                crate::protocol::EventMsg::ReasoningContentDelta(ev) => {
-                    let text = ev.delta.trim();
-                    if !text.is_empty() {
-                        send_subagent_log(
-                            &session,
-                            &turn,
-                            &call_id,
-                            &fut_task_name,
-                            Some(agent_index),
-                            text.to_string(),
-                        )
-                        .await;
-                    }
-                }
-                crate::protocol::EventMsg::TaskComplete(ev) => {
-                    last_message = ev.last_agent_message;
                     break;
                 }
-                crate::protocol::EventMsg::ExecCommandBegin(ev) => {
-                    send_subagent_log(
+                crate::protocol::EventMsg::ExecCommandBegin(_)
+                | crate::protocol::EventMsg::ExecCommandOutputDelta(_)
+                | crate::protocol::EventMsg::ExecCommandEnd(_)
+                | crate::protocol::EventMsg::PatchApplyBegin(_)
+                | crate::protocol::EventMsg::PatchApplyEnd(_)
+                | crate::protocol::EventMsg::McpToolCallBegin(_)
+                | crate::protocol::EventMsg::McpToolCallEnd(_)
+                | crate::protocol::EventMsg::WebSearchBegin(_)
+                | crate::protocol::EventMsg::WebSearchEnd(_) => {
+                    send_subagent_history_item(
                         &session,
                         &turn,
                         &call_id,
                         &fut_task_name,
                         Some(agent_index),
-                        format!("exec begin: {}", ev.command.join(" ")),
+                        child_msg.clone(),
                     )
                     .await;
                 }
-                crate::protocol::EventMsg::ExecCommandOutputDelta(ev) => {
-                    let text = String::from_utf8_lossy(&ev.chunk);
-                    let snippet: String = text.chars().take(MAX_STREAMED_CHARS).collect();
-                    if snippet.trim().is_empty() {
-                        continue;
-                    }
-                    let prefix = match ev.stream {
-                        ExecOutputStream::Stdout => "exec out",
-                        ExecOutputStream::Stderr => "exec err",
-                    };
-                    let line = if snippet.len() < text.len() {
-                        format!("{prefix}: {snippet}…")
-                    } else {
-                        format!("{prefix}: {snippet}")
-                    };
-                    send_subagent_log(
-                        &session,
-                        &turn,
-                        &call_id,
-                        &fut_task_name,
-                        Some(agent_index),
-                        line,
-                    )
-                    .await;
-                }
-                crate::protocol::EventMsg::ExecCommandEnd(ev) => {
-                    let status = format!("exit {}", ev.exit_code);
-                    send_subagent_log(
-                        &session,
-                        &turn,
-                        &call_id,
-                        &fut_task_name,
-                        Some(agent_index),
-                        format!("exec end: {status}"),
-                    )
-                    .await;
-                }
-                crate::protocol::EventMsg::PatchApplyBegin(ev) => {
-                    let changes = ev.changes.len();
-                    let approval = if ev.auto_approved { "auto" } else { "approved" };
-                    send_subagent_log(
-                        &session,
-                        &turn,
-                        &call_id,
-                        &fut_task_name,
-                        Some(agent_index),
-                        format!("apply_patch begin ({approval}): {changes} change(s)"),
-                    )
-                    .await;
-                }
-                crate::protocol::EventMsg::PatchApplyEnd(ev) => {
-                    let status = if ev.success { "success" } else { "failed" };
-                    let stderr = truncate_for_log(&ev.stderr, MAX_STREAMED_CHARS);
-                    let stdout = truncate_for_log(&ev.stdout, MAX_STREAMED_CHARS);
-                    let mut lines: Vec<String> = Vec::new();
-                    lines.push(format!(
-                        "apply_patch {status}: {} change(s)",
-                        ev.changes.len()
-                    ));
-                    if !stdout.is_empty() {
-                        lines.push(format!("apply_patch stdout: {stdout}"));
-                    }
-                    if !stderr.is_empty() {
-                        lines.push(format!("apply_patch stderr: {stderr}"));
-                    }
-                    for line in lines {
-                        send_subagent_log(
-                            &session,
-                            &turn,
-                            &call_id,
-                            &fut_task_name,
-                            Some(agent_index),
-                            line,
-                        )
-                        .await;
-                    }
-                }
-                crate::protocol::EventMsg::McpToolCallBegin(ev) => {
-                    send_subagent_log(
-                        &session,
-                        &turn,
-                        &call_id,
-                        &fut_task_name,
-                        Some(agent_index),
-                        format!(
-                            "mcp begin: {}::{}",
-                            ev.invocation.server, ev.invocation.tool
-                        ),
-                    )
-                    .await;
-                }
-                crate::protocol::EventMsg::McpToolCallEnd(ev) => {
-                    let status = if ev.is_success() { "ok" } else { "err" };
-                    let duration = ev.duration.as_secs_f32();
-                    send_subagent_log(
-                        &session,
-                        &turn,
-                        &call_id,
-                        &fut_task_name,
-                        Some(agent_index),
-                        format!(
-                            "mcp end: {}::{} [{status}] {:.1}s",
-                            ev.invocation.server, ev.invocation.tool, duration
-                        ),
-                    )
-                    .await;
-                }
-                crate::protocol::EventMsg::WebSearchBegin(_) => {
-                    send_subagent_log(
-                        &session,
-                        &turn,
-                        &call_id,
-                        &fut_task_name,
-                        Some(agent_index),
-                        "web search begin".to_string(),
-                    )
-                    .await;
-                }
-                crate::protocol::EventMsg::WebSearchEnd(ev) => {
-                    send_subagent_log(
-                        &session,
-                        &turn,
-                        &call_id,
-                        &fut_task_name,
-                        Some(agent_index),
-                        format!("web search: {}", ev.query),
-                    )
-                    .await;
-                }
-                _ => {
-                    send_subagent_log(
-                        &session,
-                        &turn,
-                        &call_id,
-                        &fut_task_name,
-                        Some(agent_index),
-                        debug_msg,
-                    )
-                    .await;
-                }
+                _ => {}
             }
         }
 
@@ -531,31 +371,19 @@ async fn send_subagent_update(
     session.send_event(turn.as_ref(), event).await;
 }
 
-async fn send_subagent_log(
+async fn send_subagent_history_item(
     session: &Arc<crate::codex::Session>,
     turn: &Arc<crate::codex::TurnContext>,
     call_id: &str,
     task_name: &str,
     agent_index: Option<usize>,
-    line: String,
+    event: crate::protocol::EventMsg,
 ) {
-    let event = EventMsg::SubagentTaskLog(SubagentTaskLogEvent {
+    let event = EventMsg::SubagentHistoryItem(crate::protocol::SubagentHistoryItemEvent {
         call_id: call_id.to_string(),
         task: task_name.to_string(),
         agent_index: agent_index.and_then(|idx| i64::try_from(idx).ok()),
-        line,
+        event: Box::new(event),
     });
     session.send_event(turn.as_ref(), event).await;
-}
-
-fn truncate_for_log(text: &str, max_len: usize) -> String {
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
-        return String::new();
-    }
-    let mut out: String = trimmed.chars().take(max_len).collect();
-    if out.len() < trimmed.len() {
-        out.push('…');
-    }
-    out
 }
