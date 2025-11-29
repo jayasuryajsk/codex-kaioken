@@ -1,5 +1,23 @@
 # Codex CLI (Rust Implementation)
 
+Fork branding: this distribution ships as `codex-kaioken` only. Install it to a path that won't shadow upstream `codex` (e.g., a separate prefix or a dedicated `bin` directory on your PATH).
+
+### Installing without colliding with upstream `codex`
+
+- Package names should differ from upstream (e.g., `codex-kaioken` for brew/npm); do not reuse the `codex` package name.
+- The installed binary is `codex-kaioken` only; no `codex` alias is shipped.
+- Manual install example to keep it isolated:
+  ```
+  mkdir -p ~/.local/bin
+  mv codex-kaioken ~/.local/bin/
+  export PATH="$HOME/.local/bin:$PATH"
+  ```
+- Faster rebuilds without reinstalling dependencies: `just install-kaioken` builds once with the workspace target dir and copies the binary into `~/.codex-kaioken/bin` (honors the workspace `Cargo.lock` via `--locked`).
+
+### Semantic search
+
+If [`sgrep`](https://github.com/Rika-Labs/sgrep) is installed and on `PATH`, Codex Kaioken exposes a `semantic_search` tool that shells out to `sgrep search --json` for ranked code results. When `sgrep` is absent, the tool is not registered.
+
 We provide Codex CLI as a standalone, native executable to ensure a zero-dependency install.
 
 ## Installing Codex

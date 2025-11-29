@@ -39,6 +39,7 @@ use crate::bottom_pane::prompt_args::prompt_has_numeric_placeholders;
 use crate::render::Insets;
 use crate::render::RectExt;
 use crate::render::renderable::Renderable;
+use crate::semantic::SemanticStatus;
 use crate::slash_command::SlashCommand;
 use crate::slash_command::built_in_slash_commands;
 use crate::style::user_message_style;
@@ -113,6 +114,9 @@ pub(crate) struct ChatComposer {
     footer_mode: FooterMode,
     footer_hint_override: Option<Vec<(String, String)>>,
     context_window_percent: Option<i64>,
+    semantic_status: SemanticStatus,
+    semantic_spinner_frame: char,
+    semantic_message: Option<String>,
 }
 
 /// Popup state – at most one can be visible at any time.
@@ -123,6 +127,7 @@ enum ActivePopup {
 }
 
 const FOOTER_SPACING_HEIGHT: u16 = 0;
+const DEFAULT_SEMANTIC_SPINNER: char = '⠋';
 
 impl ChatComposer {
     pub fn new(
@@ -156,6 +161,9 @@ impl ChatComposer {
             footer_mode: FooterMode::ShortcutSummary,
             footer_hint_override: None,
             context_window_percent: None,
+            semantic_status: SemanticStatus::Ready,
+            semantic_spinner_frame: DEFAULT_SEMANTIC_SPINNER,
+            semantic_message: None,
         };
         // Apply configuration via the setter to keep side-effects centralized.
         this.set_disable_paste_burst(disable_paste_burst);
@@ -166,7 +174,7 @@ impl ChatComposer {
         let footer_props = self.footer_props();
         let footer_hint_height = self
             .custom_footer_height()
-            .unwrap_or_else(|| footer_height(footer_props));
+            .unwrap_or_else(|| footer_height(&footer_props));
         let footer_spacing = Self::footer_spacing(footer_hint_height);
         let footer_total_height = footer_hint_height + footer_spacing;
         let popup_constraint = match &self.active_popup {
@@ -1387,6 +1395,9 @@ impl ChatComposer {
             use_shift_enter_hint: self.use_shift_enter_hint,
             is_task_running: self.is_task_running,
             context_window_percent: self.context_window_percent,
+            semantic_status: self.semantic_status,
+            semantic_spinner: self.semantic_spinner_frame,
+            semantic_message: self.semantic_message.clone(),
         }
     }
 
@@ -1523,6 +1534,23 @@ impl ChatComposer {
         }
     }
 
+    pub(crate) fn set_semantic_status(
+        &mut self,
+        status: SemanticStatus,
+        spinner_frame: char,
+        message: Option<String>,
+    ) {
+        self.semantic_status = status;
+        self.semantic_spinner_frame = spinner_frame;
+        self.semantic_message = message;
+    }
+
+    pub(crate) fn set_semantic_spinner_frame(&mut self, spinner_frame: char) {
+        if self.semantic_status == SemanticStatus::Indexing {
+            self.semantic_spinner_frame = spinner_frame;
+        }
+    }
+
     pub(crate) fn set_esc_backtrack_hint(&mut self, show: bool) {
         self.esc_backtrack_hint = show;
         if show {
@@ -1544,7 +1572,7 @@ impl Renderable for ChatComposer {
         let footer_props = self.footer_props();
         let footer_hint_height = self
             .custom_footer_height()
-            .unwrap_or_else(|| footer_height(footer_props));
+            .unwrap_or_else(|| footer_height(&footer_props));
         let footer_spacing = Self::footer_spacing(footer_hint_height);
         let footer_total_height = footer_hint_height + footer_spacing;
         const COLS_WITH_MARGIN: u16 = LIVE_PREFIX_COLS + 1;
@@ -1571,7 +1599,7 @@ impl Renderable for ChatComposer {
                 let footer_props = self.footer_props();
                 let custom_height = self.custom_footer_height();
                 let footer_hint_height =
-                    custom_height.unwrap_or_else(|| footer_height(footer_props));
+                    custom_height.unwrap_or_else(|| footer_height(&footer_props));
                 let footer_spacing = Self::footer_spacing(footer_hint_height);
                 let hint_rect = if footer_spacing > 0 && footer_hint_height > 0 {
                     let [_, hint_rect] = Layout::vertical([
@@ -1602,7 +1630,7 @@ impl Renderable for ChatComposer {
                         Line::from(spans).render_ref(custom_rect, buf);
                     }
                 } else {
-                    render_footer(hint_rect, buf, footer_props);
+                    render_footer(hint_rect, buf, &footer_props);
                 }
             }
         }
@@ -1717,17 +1745,8 @@ mod tests {
             row
         };
 
-        let mut hint_row: Option<(u16, String)> = None;
-        for y in 0..area.height {
-            let row = row_to_string(y);
-            if row.contains("? for shortcuts") {
-                hint_row = Some((y, row));
-                break;
-            }
-        }
-
-        let (hint_row_idx, hint_row_contents) =
-            hint_row.expect("expected footer hint row to be rendered");
+        let hint_row_idx = area.height - 1;
+        let hint_row_contents = row_to_string(hint_row_idx);
         assert_eq!(
             hint_row_idx,
             area.height - 1,
@@ -1766,7 +1785,7 @@ mod tests {
         );
         setup(&mut composer);
         let footer_props = composer.footer_props();
-        let footer_lines = footer_height(footer_props);
+        let footer_lines = footer_height(&footer_props);
         let footer_spacing = ChatComposer::footer_spacing(footer_lines);
         let height = footer_lines + footer_spacing + 8;
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();

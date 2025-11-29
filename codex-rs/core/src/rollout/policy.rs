@@ -46,6 +46,7 @@ pub(crate) fn should_persist_event_msg(ev: &EventMsg) -> bool {
         | EventMsg::EnteredReviewMode(_)
         | EventMsg::ExitedReviewMode(_)
         | EventMsg::UndoCompleted(_)
+        | EventMsg::SubagentTaskUpdate(_)
         | EventMsg::TurnAborted(_) => true,
         EventMsg::Error(_)
         | EventMsg::Warning(_)
@@ -59,6 +60,8 @@ pub(crate) fn should_persist_event_msg(ev: &EventMsg) -> bool {
         | EventMsg::SessionConfigured(_)
         | EventMsg::McpToolCallBegin(_)
         | EventMsg::McpToolCallEnd(_)
+        | EventMsg::SubagentTaskLog(_)
+        | EventMsg::SubagentHistoryItem(_)
         | EventMsg::WebSearchBegin(_)
         | EventMsg::WebSearchEnd(_)
         | EventMsg::ExecCommandBegin(_)

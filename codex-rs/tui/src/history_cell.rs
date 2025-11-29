@@ -8,6 +8,7 @@ use crate::exec_cell::spinner;
 use crate::exec_command::relativize_to_home;
 use crate::exec_command::strip_bash_lc_and_escape;
 use crate::markdown::append_markdown;
+use crate::markdown_render::render_markdown_text_with_width;
 use crate::render::line_utils::line_to_static;
 use crate::render::line_utils::prefix_lines;
 use crate::render::line_utils::push_owned_lines;
@@ -18,6 +19,7 @@ use crate::text_formatting::truncate_text;
 use crate::ui_consts::LIVE_PREFIX_COLS;
 use crate::update_action::UpdateAction;
 use crate::version::CODEX_CLI_VERSION;
+use crate::version::display_version;
 use crate::wrapping::RtOptions;
 use crate::wrapping::word_wrap_line;
 use crate::wrapping::word_wrap_lines;
@@ -30,6 +32,7 @@ use codex_core::protocol::FileChange;
 use codex_core::protocol::McpAuthStatus;
 use codex_core::protocol::McpInvocation;
 use codex_core::protocol::SessionConfiguredEvent;
+use codex_core::protocol::SubagentTaskStatus;
 use codex_core::protocol_config_types::ReasoningEffort as ReasoningEffortConfig;
 use codex_protocol::plan_tool::PlanItemArg;
 use codex_protocol::plan_tool::StepStatus;
@@ -592,7 +595,7 @@ pub(crate) fn new_session_info(
             model,
             reasoning_effort,
             config.cwd.clone(),
-            crate::version::CODEX_CLI_VERSION,
+            display_version(),
         );
 
         // Help lines below the header (new copy and list)
@@ -654,7 +657,7 @@ pub(crate) fn new_user_prompt(message: String) -> UserHistoryCell {
 
 #[derive(Debug)]
 struct SessionHeaderHistoryCell {
-    version: &'static str,
+    version: String,
     model: String,
     reasoning_effort: Option<ReasoningEffortConfig>,
     directory: PathBuf,
@@ -665,10 +668,10 @@ impl SessionHeaderHistoryCell {
         model: String,
         reasoning_effort: Option<ReasoningEffortConfig>,
         directory: PathBuf,
-        version: &'static str,
+        version: &str,
     ) -> Self {
         Self {
-            version,
+            version: version.to_string(),
             model,
             reasoning_effort,
             directory,
@@ -722,10 +725,10 @@ impl HistoryCell for SessionHeaderHistoryCell {
 
         let make_row = |spans: Vec<Span<'static>>| Line::from(spans);
 
-        // Title line rendered inside the box: ">_ OpenAI Codex (vX)"
+        // Title line rendered inside the box: ">_ Codex Kaioken (vX)"
         let title_spans: Vec<Span<'static>> = vec![
             Span::from(">_ ").dim(),
-            Span::from("OpenAI Codex").bold(),
+            Span::from("Codex Kaioken").bold(),
             Span::from(" ").dim(),
             Span::from(format!("(v{})", self.version)).dim(),
         ];
@@ -1372,6 +1375,196 @@ pub(crate) fn new_view_image_tool_call(path: PathBuf, cwd: &Path) -> PlainHistor
     ];
 
     PlainHistoryCell { lines }
+}
+
+#[derive(Debug, Clone)]
+struct SubagentTaskState {
+    name: String,
+    label: Option<String>,
+    status: SubagentTaskStatus,
+    summary: Option<String>,
+    started_at: Instant,
+    finished_at: Option<Instant>,
+    log: Vec<String>,
+}
+
+#[derive(Debug)]
+pub(crate) struct SubagentTasksCell {
+    pub(crate) call_id: String,
+    tasks: Vec<SubagentTaskState>,
+    animations_enabled: bool,
+}
+
+impl SubagentTasksCell {
+    pub(crate) fn new(call_id: String, animations_enabled: bool) -> Self {
+        Self {
+            call_id,
+            tasks: Vec::new(),
+            animations_enabled,
+        }
+    }
+
+    pub(crate) fn update_task(
+        &mut self,
+        name: String,
+        status: SubagentTaskStatus,
+        summary: Option<String>,
+        label: Option<String>,
+    ) {
+        let now = Instant::now();
+        if let Some(task) = self.tasks.iter_mut().find(|task| task.name == name) {
+            task.status = status;
+            task.summary = summary;
+            if task.label.is_none()
+                && let Some(label) = label
+            {
+                task.label = Some(label);
+            }
+            if !matches!(task.status, SubagentTaskStatus::Running) {
+                task.finished_at = Some(now);
+            }
+            return;
+        }
+
+        self.tasks.push(SubagentTaskState {
+            name,
+            label,
+            status,
+            summary,
+            started_at: now,
+            finished_at: None,
+            log: Vec::new(),
+        });
+    }
+
+    pub(crate) fn append_log(&mut self, name: String, line: String, label: Option<String>) {
+        if line.trim().is_empty() {
+            return;
+        }
+        if let Some(task) = self.tasks.iter_mut().find(|task| task.name == name) {
+            if task.label.is_none()
+                && let Some(label) = label
+            {
+                task.label = Some(label);
+            }
+            if !matches!(task.status, SubagentTaskStatus::Running) {
+                task.status = SubagentTaskStatus::Running;
+                task.finished_at = None;
+            }
+            task.log.push(line);
+            if task.log.len() > 50 {
+                let drop = task.log.len() - 50;
+                task.log.drain(0..drop);
+            }
+            return;
+        }
+
+        self.tasks.push(SubagentTaskState {
+            name,
+            label,
+            status: SubagentTaskStatus::Running,
+            summary: None,
+            started_at: Instant::now(),
+            finished_at: None,
+            log: vec![line],
+        });
+    }
+
+    pub(crate) fn has_running(&self) -> bool {
+        self.tasks
+            .iter()
+            .any(|task| matches!(task.status, SubagentTaskStatus::Running))
+    }
+
+    fn pretty_elapsed(elapsed: Duration) -> String {
+        if elapsed < Duration::from_secs(60) {
+            return format!("{:.1}s", elapsed.as_secs_f32());
+        }
+        super::status_indicator_widget::fmt_elapsed_compact(elapsed.as_secs())
+    }
+
+    fn status_span(&self, task: &SubagentTaskState) -> Span<'static> {
+        match task.status {
+            SubagentTaskStatus::Running => spinner(Some(task.started_at), self.animations_enabled),
+            SubagentTaskStatus::Done => "DONE".green().bold(),
+            SubagentTaskStatus::Timeout => "TIMEOUT".red().bold(),
+            SubagentTaskStatus::Failed => "FAILED".red().bold(),
+        }
+    }
+}
+
+impl HistoryCell for SubagentTasksCell {
+    fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
+        if self.tasks.is_empty() {
+            return Vec::new();
+        }
+
+        let mut lines: Vec<Line<'static>> = Vec::new();
+        lines.push(vec!["Subagents".bold()].into());
+
+        for task in &self.tasks {
+            let elapsed = task
+                .finished_at
+                .unwrap_or_else(Instant::now)
+                .saturating_duration_since(task.started_at);
+            let elapsed_display = Self::pretty_elapsed(elapsed);
+            let label = task.label.as_deref().unwrap_or(task.name.as_str());
+            let spans: Vec<Span<'static>> = vec![
+                "  ".into(),
+                self.status_span(task),
+                " ".into(),
+                label.to_string().bold(),
+                " ".into(),
+                elapsed_display.dim(),
+            ];
+            lines.push(spans.clone().into());
+
+            lines.extend(task_detail_lines(task, width));
+        }
+
+        lines
+    }
+}
+
+const MAX_SUBAGENT_DETAIL_LINES: usize = 5;
+
+fn task_detail_lines(task: &SubagentTaskState, width: u16) -> Vec<Line<'static>> {
+    let mut detail_lines: Vec<Line<'static>> = Vec::new();
+    let available = width.saturating_sub(4).max(1);
+    let entries: Vec<String> = task.log.clone();
+
+    if entries.is_empty() && matches!(task.status, SubagentTaskStatus::Running) {
+        return detail_lines;
+    }
+
+    let (head, overflow) =
+        entries.split_at(entries.len().saturating_sub(MAX_SUBAGENT_DETAIL_LINES));
+    if !head.is_empty() {
+        detail_lines.push(vec!["  ".into(), "… (more)".dim()].into());
+    }
+
+    for (idx, entry) in overflow.iter().enumerate() {
+        let connector = if idx + 1 == overflow.len() {
+            "└─"
+        } else {
+            "├─"
+        };
+        let rendered = render_markdown_text_with_width(entry, Some(available as usize));
+        for (line_idx, line) in rendered.lines.iter().enumerate() {
+            let mut spans = Vec::new();
+            if line_idx == 0 {
+                spans.push("  ".into());
+                spans.push(connector.cyan());
+                spans.push(" ".into());
+            } else {
+                spans.push("    ".into());
+            }
+            spans.extend(line.spans.iter().cloned());
+            detail_lines.push(Line::from(spans));
+        }
+    }
+
+    detail_lines
 }
 
 pub(crate) fn new_reasoning_summary_block(

@@ -362,6 +362,8 @@ fn make_chatwidget_manual() -> (
         suppressed_exec_calls: HashSet::new(),
         last_unified_wait: None,
         task_complete_pending: false,
+        semantic_warmup_started: false,
+        semantic_watch: None,
         mcp_startup_status: None,
         interrupts: InterruptManager::new(),
         reasoning_buffer: String::new(),

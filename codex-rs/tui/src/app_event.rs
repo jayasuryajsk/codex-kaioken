@@ -9,6 +9,7 @@ use codex_file_search::FileMatch;
 
 use crate::bottom_pane::ApprovalRequest;
 use crate::history_cell::HistoryCell;
+use crate::semantic::SemanticStatus;
 
 use codex_core::protocol::AskForApproval;
 use codex_core::protocol::SandboxPolicy;
@@ -47,6 +48,9 @@ pub(crate) enum AppEvent {
 
     /// Result of computing a `/diff` command.
     DiffResult(String),
+
+    /// Update semantic search readiness (sgrep warmup/indexing state).
+    SemanticStatusUpdate(SemanticStatus, Option<String>),
 
     InsertHistoryCell(Box<dyn HistoryCell>),
 

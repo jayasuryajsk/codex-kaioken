@@ -6,6 +6,10 @@ license.workspace = true
 
 [[bin]]
 name = "codex"
+path = "src/bin/codex.rs"
+
+[[bin]]
+name = "codex-kaioken"
 path = "src/main.rs"
 
 [lib]

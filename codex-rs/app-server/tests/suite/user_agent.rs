@@ -1,6 +1,7 @@
 use anyhow::Result;
 use app_test_support::McpProcess;
 use app_test_support::to_response;
+use app_test_support::workspace_cli_version;
 use codex_app_server_protocol::GetUserAgentResponse;
 use codex_app_server_protocol::JSONRPCResponse;
 use codex_app_server_protocol::RequestId;
@@ -26,7 +27,9 @@ async fn get_user_agent_returns_current_codex_user_agent() -> Result<()> {
 
     let os_info = os_info::get();
     let user_agent = format!(
-        "codex_cli_rs/0.0.0 ({} {}; {}) {} (codex-app-server-tests; 0.1.0)",
+        "{}/{} ({} {}; {}) {} (codex-app-server-tests; 0.1.0)",
+        codex_core::default_client::originator().value,
+        workspace_cli_version(),
         os_info.os_type(),
         os_info.version(),
         os_info.architecture().unwrap_or("unknown"),

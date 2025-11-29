@@ -527,6 +527,131 @@ fn create_grep_files_tool() -> ToolSpec {
     })
 }
 
+fn create_semantic_search_tool() -> ToolSpec {
+    let mut properties = BTreeMap::new();
+    properties.insert(
+        "query".to_string(),
+        JsonSchema::String {
+            description: Some("Natural language query for semantic search.".to_string()),
+        },
+    );
+    properties.insert(
+        "limit".to_string(),
+        JsonSchema::Number {
+            description: Some("Maximum number of results to return (defaults to 25).".to_string()),
+        },
+    );
+    properties.insert(
+        "path".to_string(),
+        JsonSchema::String {
+            description: Some(
+                "Directory or file path to search. Defaults to the repository root or session working directory."
+                    .to_string(),
+            ),
+        },
+    );
+    properties.insert(
+        "glob".to_string(),
+        JsonSchema::String {
+            description: Some(
+                "Optional glob that limits which files are searched (default includes common code/docs and excludes build artefacts)."
+                    .to_string(),
+            ),
+        },
+    );
+    properties.insert(
+        "context".to_string(),
+        JsonSchema::Boolean {
+            description: Some(
+                "Whether to include the matched snippet context. Defaults to false.".to_string(),
+            ),
+        },
+    );
+    let mut filter_props = BTreeMap::new();
+    filter_props.insert(
+        "filters".to_string(),
+        JsonSchema::Object {
+            properties: BTreeMap::new(),
+            required: None,
+            additional_properties: Some(JsonSchema::String {
+                description: Some("Optional filters passed to sgrep search, e.g. language=rust or path=core/.".to_string()),
+            }.into()),
+        },
+    );
+    properties.extend(filter_props);
+
+    ToolSpec::Function(ResponsesApiTool {
+        name: "semantic_search".to_string(),
+        description: "Fast repo-wide semantic code search via sgrep; use this before shelling out to find code. Defaults to the repo root with sensible excludes and supports optional filters and snippets."
+            .to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["query".to_string()]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
+fn create_subagent_tool() -> ToolSpec {
+    let mut task_props = BTreeMap::new();
+    task_props.insert(
+        "name".to_string(),
+        JsonSchema::String {
+            description: Some("Short task identifier.".to_string()),
+        },
+    );
+    task_props.insert(
+        "prompt".to_string(),
+        JsonSchema::String {
+            description: Some("The user prompt for the subagent.".to_string()),
+        },
+    );
+    task_props.insert(
+        "cwd".to_string(),
+        JsonSchema::String {
+            description: Some(
+                "Optional working directory for this task (defaults to parent cwd).".to_string(),
+            ),
+        },
+    );
+    task_props.insert(
+        "timeout_ms".to_string(),
+        JsonSchema::Number {
+            description: Some(
+                "Optional wall-clock timeout in milliseconds for this task (defaults to 60s)."
+                    .to_string(),
+            ),
+        },
+    );
+
+    let mut properties = BTreeMap::new();
+    properties.insert(
+        "tasks".to_string(),
+        JsonSchema::Array {
+            items: Box::new(JsonSchema::Object {
+                properties: task_props,
+                required: Some(vec!["name".to_string(), "prompt".to_string()]),
+                additional_properties: Some(false.into()),
+            }),
+            description: Some("List of subtasks to run; max 4.".to_string()),
+        },
+    );
+
+    ToolSpec::Function(ResponsesApiTool {
+        name: "subagent_run".to_string(),
+        description:
+            "Spawn one or more bounded sub-agents to tackle narrowly scoped prompts in parallel."
+                .to_string(),
+        strict: false,
+        parameters: JsonSchema::Object {
+            properties,
+            required: Some(vec!["tasks".to_string()]),
+            additional_properties: Some(false.into()),
+        },
+    })
+}
+
 fn create_read_file_tool() -> ToolSpec {
     let mut properties = BTreeMap::new();
     properties.insert(
@@ -980,8 +1105,10 @@ pub(crate) fn build_specs(
     use crate::tools::handlers::McpResourceHandler;
     use crate::tools::handlers::PlanHandler;
     use crate::tools::handlers::ReadFileHandler;
+    use crate::tools::handlers::SemanticSearchHandler;
     use crate::tools::handlers::ShellCommandHandler;
     use crate::tools::handlers::ShellHandler;
+    use crate::tools::handlers::SubagentHandler;
     use crate::tools::handlers::TestSyncHandler;
     use crate::tools::handlers::UnifiedExecHandler;
     use crate::tools::handlers::ViewImageHandler;
@@ -1048,6 +1175,14 @@ pub(crate) fn build_specs(
         }
         builder.register_handler("apply_patch", apply_patch_handler);
     }
+
+    let semantic_search_handler = Arc::new(SemanticSearchHandler);
+    builder.push_spec_with_parallel_support(create_semantic_search_tool(), true);
+    builder.register_handler("semantic_search", semantic_search_handler);
+
+    let subagent_handler = Arc::new(SubagentHandler);
+    builder.push_spec_with_parallel_support(create_subagent_tool(), true);
+    builder.register_handler("subagent_run", subagent_handler);
 
     if config
         .experimental_supported_tools
@@ -1122,6 +1257,7 @@ mod tests {
     use crate::tools::registry::ConfiguredToolSpec;
     use mcp_types::ToolInputSchema;
     use pretty_assertions::assert_eq;
+    use std::collections::HashMap;
 
     use super::*;
 
@@ -1253,6 +1389,8 @@ mod tests {
             create_apply_patch_freeform_tool(),
             ToolSpec::WebSearch {},
             create_view_image_tool(),
+            create_semantic_search_tool(),
+            create_subagent_tool(),
         ] {
             expected.insert(tool_name(&spec).to_string(), spec);
         }
@@ -1272,6 +1410,24 @@ mod tests {
         }
     }
 
+    fn expected_with_semantic_search<'a>(tools: &'a [&'a str]) -> Vec<&'a str> {
+        let mut with_semantic = tools.to_vec();
+        let semantic_pos =
+            if let Some(pos) = with_semantic.iter().position(|tool| *tool == "web_search") {
+                with_semantic.insert(pos, "semantic_search");
+                pos
+            } else if let Some(pos) = with_semantic.iter().position(|tool| *tool == "view_image") {
+                with_semantic.insert(pos, "semantic_search");
+                pos
+            } else {
+                with_semantic.push("semantic_search");
+                with_semantic.len() - 1
+            };
+        with_semantic.insert(semantic_pos + 1, "subagent_run");
+
+        with_semantic
+    }
+
     fn assert_model_tools(model_family: &str, features: &Features, expected_tools: &[&str]) {
         let model_family = find_family_for_model(model_family)
             .unwrap_or_else(|| panic!("{model_family} should be a valid model family"));
@@ -1281,7 +1437,8 @@ mod tests {
         });
         let (tools, _) = build_specs(&config, Some(HashMap::new())).build();
         let tool_names = tools.iter().map(|t| t.spec.name()).collect::<Vec<_>>();
-        assert_eq!(&tool_names, &expected_tools,);
+        let expected = expected_with_semantic_search(expected_tools);
+        assert_eq!(tool_names, expected,);
     }
 
     #[test]

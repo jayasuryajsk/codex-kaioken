@@ -30,6 +30,8 @@ use serde_json::json;
 use std::process::Command as StdCommand;
 use tokio::process::Command;
 
+const WORKSPACE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub struct McpProcess {
     next_request_id: AtomicI64,
     /// Retain this child process until the client is dropped. The Tokio runtime
@@ -126,7 +128,7 @@ impl McpProcess {
             client_info: Implementation {
                 name: "elicitation test".into(),
                 title: Some("Elicitation Test".into()),
-                version: "0.0.0".into(),
+                version: WORKSPACE_VERSION.into(),
                 user_agent: None,
             },
             protocol_version: mcp_types::MCP_SCHEMA_VERSION.into(),
@@ -144,7 +146,9 @@ impl McpProcess {
         let initialized = self.read_jsonrpc_message().await?;
         let os_info = os_info::get();
         let user_agent = format!(
-            "codex_cli_rs/0.0.0 ({} {}; {}) {} (elicitation test; 0.0.0)",
+            "{}/{} ({} {}; {}) {} (elicitation test; {WORKSPACE_VERSION})",
+            codex_core::default_client::originator().value,
+            WORKSPACE_VERSION,
             os_info.os_type(),
             os_info.version(),
             os_info.architecture().unwrap_or("unknown"),
@@ -163,7 +167,7 @@ impl McpProcess {
                     "serverInfo": {
                         "name": "codex-mcp-server",
                         "title": "Codex",
-                        "version": "0.0.0",
+                        "version": WORKSPACE_VERSION,
                         "user_agent": user_agent
                     },
                     "protocolVersion": mcp_types::MCP_SCHEMA_VERSION

@@ -1378,6 +1378,16 @@ impl Session {
     }
 }
 
+impl Session {
+    pub async fn clone_original_config(&self) -> anyhow::Result<Arc<Config>> {
+        let state = self.state.lock().await;
+        Ok(state
+            .session_configuration
+            .original_config_do_not_use
+            .clone())
+    }
+}
+
 async fn submission_loop(sess: Arc<Session>, config: Arc<Config>, rx_sub: Receiver<Submission>) {
     // Seed with context in case there is an OverrideTurnContext first.
     let mut previous_context: Option<Arc<TurnContext>> =

@@ -3,6 +3,7 @@ use app_test_support::McpProcess;
 use app_test_support::create_fake_rollout;
 use app_test_support::create_mock_chat_completions_server;
 use app_test_support::to_response;
+use app_test_support::workspace_cli_version;
 use codex_app_server_protocol::JSONRPCResponse;
 use codex_app_server_protocol::RequestId;
 use codex_app_server_protocol::SessionSource;
@@ -101,7 +102,7 @@ async fn thread_resume_returns_rollout_history() -> Result<()> {
     assert_eq!(thread.model_provider, "mock_provider");
     assert!(thread.path.is_absolute());
     assert_eq!(thread.cwd, PathBuf::from("/"));
-    assert_eq!(thread.cli_version, "0.0.0");
+    assert_eq!(thread.cli_version, workspace_cli_version());
     assert_eq!(thread.source, SessionSource::Cli);
     assert_eq!(thread.git_info, None);
 

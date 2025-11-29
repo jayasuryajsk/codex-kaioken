@@ -26,3 +26,7 @@ pub fn to_response<T: DeserializeOwned>(response: JSONRPCResponse) -> anyhow::Re
     let codex_response = serde_json::from_value(value)?;
     Ok(codex_response)
 }
+
+pub fn workspace_cli_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}

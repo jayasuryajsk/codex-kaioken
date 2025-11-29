@@ -2,6 +2,7 @@ use anyhow::Result;
 use app_test_support::McpProcess;
 use app_test_support::create_fake_rollout;
 use app_test_support::to_response;
+use app_test_support::workspace_cli_version;
 use codex_app_server_protocol::GitInfo as ApiGitInfo;
 use codex_app_server_protocol::JSONRPCResponse;
 use codex_app_server_protocol::RequestId;
@@ -112,7 +113,7 @@ async fn thread_list_pagination_next_cursor_none_on_last_page() -> Result<()> {
         assert_eq!(thread.model_provider, "mock_provider");
         assert!(thread.created_at > 0);
         assert_eq!(thread.cwd, PathBuf::from("/"));
-        assert_eq!(thread.cli_version, "0.0.0");
+        assert_eq!(thread.cli_version, workspace_cli_version());
         assert_eq!(thread.source, SessionSource::Cli);
         assert_eq!(thread.git_info, None);
     }
@@ -141,7 +142,7 @@ async fn thread_list_pagination_next_cursor_none_on_last_page() -> Result<()> {
         assert_eq!(thread.model_provider, "mock_provider");
         assert!(thread.created_at > 0);
         assert_eq!(thread.cwd, PathBuf::from("/"));
-        assert_eq!(thread.cli_version, "0.0.0");
+        assert_eq!(thread.cli_version, workspace_cli_version());
         assert_eq!(thread.source, SessionSource::Cli);
         assert_eq!(thread.git_info, None);
     }
@@ -198,7 +199,7 @@ async fn thread_list_respects_provider_filter() -> Result<()> {
     let expected_ts = chrono::DateTime::parse_from_rfc3339("2025-01-02T11:00:00Z")?.timestamp();
     assert_eq!(thread.created_at, expected_ts);
     assert_eq!(thread.cwd, PathBuf::from("/"));
-    assert_eq!(thread.cli_version, "0.0.0");
+    assert_eq!(thread.cli_version, workspace_cli_version());
     assert_eq!(thread.source, SessionSource::Cli);
     assert_eq!(thread.git_info, None);
 
@@ -253,7 +254,7 @@ async fn thread_list_includes_git_info() -> Result<()> {
     assert_eq!(thread.git_info, Some(expected_git));
     assert_eq!(thread.source, SessionSource::Cli);
     assert_eq!(thread.cwd, PathBuf::from("/"));
-    assert_eq!(thread.cli_version, "0.0.0");
+    assert_eq!(thread.cli_version, workspace_cli_version());
 
     Ok(())
 }

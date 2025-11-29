@@ -124,7 +124,7 @@ impl ActionKind {
                 );
 
                 let command = format!("python3 -c \"{script}\"");
-                let event = shell_event(call_id, &command, 1_000, with_escalated_permissions)?;
+                let event = shell_event(call_id, &command, 5_000, with_escalated_permissions)?;
                 Ok((event, Some(command)))
             }
             ActionKind::RunCommand { command } => {

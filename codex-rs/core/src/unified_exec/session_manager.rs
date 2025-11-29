@@ -59,6 +59,8 @@ const UNIFIED_EXEC_ENV: [(&str, &str); 8] = [
     ("GIT_PAGER", "cat"),
 ];
 
+const POST_EXIT_OUTPUT_GRACE_MS: u64 = 25;
+
 fn apply_unified_exec_env(mut env: HashMap<String, String>) -> HashMap<String, String> {
     for (key, value) in UNIFIED_EXEC_ENV {
         env.insert(key.to_string(), value.to_string());
@@ -137,7 +139,7 @@ impl UnifiedExecSessionManager {
             cancellation_token,
         } = session.output_handles();
         let deadline = start + Duration::from_millis(yield_time_ms);
-        let collected = Self::collect_output_until_deadline(
+        let mut collected = Self::collect_output_until_deadline(
             &output_buffer,
             &output_notify,
             &cancellation_token,
@@ -146,9 +148,40 @@ impl UnifiedExecSessionManager {
         .await;
         let wall_time = Instant::now().saturating_duration_since(start);
 
+        let exit_grace = Duration::from_millis(200);
+        let mut has_exited = session.has_exited();
+        if !has_exited
+            && tokio::time::timeout(exit_grace, cancellation_token.cancelled())
+                .await
+                .is_ok()
+        {
+            // The process exited just after the initial deadline; drain any trailing output.
+            let grace_deadline = Instant::now() + Duration::from_millis(POST_EXIT_OUTPUT_GRACE_MS);
+            collected = Self::collect_output_until_deadline(
+                &output_buffer,
+                &output_notify,
+                &cancellation_token,
+                grace_deadline,
+            )
+            .await;
+            has_exited = true;
+        }
+
+        if !has_exited && collected.is_empty() {
+            let fallback_ms = std::cmp::min(yield_time_ms.saturating_mul(2), 2_000);
+            let fallback_deadline = Instant::now() + Duration::from_millis(fallback_ms);
+            collected = Self::collect_output_until_deadline(
+                &output_buffer,
+                &output_notify,
+                &cancellation_token,
+                fallback_deadline,
+            )
+            .await;
+            has_exited = session.has_exited();
+        }
+
         let text = String::from_utf8_lossy(&collected).to_string();
         let output = formatted_truncate_text(&text, TruncationPolicy::Tokens(max_tokens));
-        let has_exited = session.has_exited();
         let exit_code = session.exit_code();
         let chunk_id = generate_chunk_id();
         let process_id = if has_exited {
@@ -574,8 +607,6 @@ impl UnifiedExecSessionManager {
         cancellation_token: &CancellationToken,
         deadline: Instant,
     ) -> Vec<u8> {
-        const POST_EXIT_OUTPUT_GRACE: Duration = Duration::from_millis(25);
-
         let mut collected: Vec<u8> = Vec::with_capacity(4096);
         let mut exit_signal_received = cancellation_token.is_cancelled();
         loop {
@@ -598,7 +629,7 @@ impl UnifiedExecSessionManager {
 
                 let notified = wait_for_output.unwrap_or_else(|| output_notify.notified());
                 if exit_signal_received {
-                    let grace = remaining.min(POST_EXIT_OUTPUT_GRACE);
+                    let grace = remaining.min(Duration::from_millis(POST_EXIT_OUTPUT_GRACE_MS));
                     if tokio::time::timeout(grace, notified).await.is_err() {
                         break;
                     }

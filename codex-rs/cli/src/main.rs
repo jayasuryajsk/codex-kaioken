@@ -24,6 +24,7 @@ use codex_tui::AppExitInfo;
 use codex_tui::Cli as TuiCli;
 use codex_tui::update_action::UpdateAction;
 use owo_colors::OwoColorize;
+use std::env;
 use std::path::PathBuf;
 use supports_color::Stream;
 
@@ -48,9 +49,9 @@ use codex_core::features::is_known_feature_key;
     subcommand_negates_reqs = true,
     // The executable is sometimes invoked via a platform‑specific name like
     // `codex-x86_64-unknown-linux-musl`, but the help output should always use
-    // the generic `codex` command name that users run.
-    bin_name = "codex",
-    override_usage = "codex [OPTIONS] [PROMPT]\n       codex [OPTIONS] <COMMAND> [ARGS]"
+    // the codex-kaioken command name that users run.
+    bin_name = "codex-kaioken",
+    override_usage = "codex-kaioken [OPTIONS] [PROMPT]\n       codex-kaioken [OPTIONS] <COMMAND> [ARGS]"
 )]
 struct MultitoolCli {
     #[clap(flatten)]
@@ -395,6 +396,57 @@ enum FeaturesSubcommand {
     List,
 }
 
+fn warn_if_shadowed() {
+    let bin_name = env::args()
+        .next()
+        .and_then(|path| {
+            PathBuf::from(path)
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+        })
+        .unwrap_or_else(|| "codex-kaioken".to_string());
+
+    let current = match env::current_exe() {
+        Ok(path) => path,
+        Err(_) => return,
+    };
+    let Some(first_on_path) = first_in_path(bin_name.as_str()) else {
+        return;
+    };
+    if canonicalize(&current) == canonicalize(&first_on_path) {
+        return;
+    }
+
+    eprintln!(
+        "\nWarning: running {current} but PATH resolves {bin} to {first}. \
+Move ~/.codex-kaioken/bin earlier in PATH or launch with ~/.codex-kaioken/bin/{bin}.",
+        current = current.display(),
+        bin = bin_name,
+        first = first_on_path.display(),
+    );
+}
+
+fn canonicalize(path: &PathBuf) -> PathBuf {
+    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+}
+
+fn first_in_path(bin_name: &str) -> Option<PathBuf> {
+    let path_var = env::var_os("PATH")?;
+    let bin_name = if cfg!(windows) {
+        format!("{bin_name}.exe")
+    } else {
+        bin_name.to_string()
+    };
+
+    for dir in env::split_paths(&path_var) {
+        let candidate = dir.join(&bin_name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
 fn stage_str(stage: codex_core::features::Stage) -> &'static str {
     use codex_core::features::Stage;
     match stage {
@@ -414,11 +466,15 @@ fn pre_main_hardening() {
     codex_process_hardening::pre_main_hardening();
 }
 
-fn main() -> anyhow::Result<()> {
+pub fn real_main() -> anyhow::Result<()> {
     arg0_dispatch_or_else(|codex_linux_sandbox_exe| async move {
         cli_main(codex_linux_sandbox_exe).await?;
         Ok(())
     })
+}
+
+fn main() -> anyhow::Result<()> {
+    real_main()
 }
 
 async fn cli_main(codex_linux_sandbox_exe: Option<PathBuf>) -> anyhow::Result<()> {
@@ -428,6 +484,8 @@ async fn cli_main(codex_linux_sandbox_exe: Option<PathBuf>) -> anyhow::Result<()
         mut interactive,
         subcommand,
     } = MultitoolCli::parse();
+
+    warn_if_shadowed();
 
     // Fold --enable/--disable into config overrides so they flow to all subcommands.
     let toggle_overrides = feature_toggles.to_overrides()?;

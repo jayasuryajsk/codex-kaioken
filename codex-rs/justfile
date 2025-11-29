@@ -40,6 +40,12 @@ install:
     rustup show active-toolchain
     cargo fetch
 
+# Fast rebuild/install Kaioken without fighting PATH collisions.
+install-kaioken:
+    cargo build --release -p codex-cli --bin codex-kaioken --locked
+    mkdir -p ~/.codex-kaioken/bin
+    cp target/release/codex-kaioken ~/.codex-kaioken/bin/
+
 # Run `cargo nextest` since it's faster than `cargo test`, though including
 # --no-fail-fast is important to ensure all tests are run.
 #

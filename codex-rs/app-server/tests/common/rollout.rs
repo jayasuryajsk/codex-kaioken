@@ -1,3 +1,4 @@
+use crate::workspace_cli_version;
 use anyhow::Result;
 use codex_protocol::ConversationId;
 use codex_protocol::protocol::GitInfo;
@@ -45,7 +46,7 @@ pub fn create_fake_rollout(
         timestamp: meta_rfc3339.to_string(),
         cwd: PathBuf::from("/"),
         originator: "codex".to_string(),
-        cli_version: "0.0.0".to_string(),
+        cli_version: workspace_cli_version().to_string(),
         instructions: None,
         source: SessionSource::Cli,
         model_provider: model_provider.map(str::to_string),
