@@ -81,6 +81,12 @@ use crate::protocol::AgentReasoningSectionBreakEvent;
 use crate::protocol::ApplyPatchApprovalRequestEvent;
 use crate::protocol::AskForApproval;
 use crate::protocol::BackgroundEventEvent;
+use crate::protocol::CheckpointAction;
+use crate::protocol::CheckpointCreatedEvent;
+use crate::protocol::CheckpointEntry;
+use crate::protocol::CheckpointErrorEvent;
+use crate::protocol::CheckpointListEvent;
+use crate::protocol::CheckpointRestoredEvent;
 use crate::protocol::DeprecationNoticeEvent;
 use crate::protocol::Event;
 use crate::protocol::EventMsg;
@@ -122,11 +128,18 @@ use crate::user_instructions::DeveloperInstructions;
 use crate::user_instructions::UserInstructions;
 use crate::user_notification::UserNotification;
 use crate::util::backoff;
+use chrono::SecondsFormat;
+use chrono::Utc;
 use codex_async_utils::OrCancelExt;
 use codex_execpolicy::Policy as ExecPolicy;
+use codex_git::CreateGhostCommitOptions;
+use codex_git::GhostCommit;
+use codex_git::create_ghost_commit;
+use codex_git::restore_ghost_commit;
 use codex_otel::otel_event_manager::OtelEventManager;
 use codex_protocol::config_types::ReasoningEffort as ReasoningEffortConfig;
 use codex_protocol::config_types::ReasoningSummary as ReasoningSummaryConfig;
+use codex_protocol::models::CheckpointMetadata;
 use codex_protocol::models::ContentItem;
 use codex_protocol::models::FunctionCallOutputPayload;
 use codex_protocol::models::ResponseInputItem;
@@ -1221,6 +1234,218 @@ impl Session {
         self.send_event(turn_context, event).await;
     }
 
+    pub(crate) async fn create_checkpoint(self: &Arc<Self>, sub_id: String, name: String) {
+        let trimmed = name.trim();
+        let turn_context = self
+            .new_turn_with_sub_id(sub_id, SessionSettingsUpdate::default())
+            .await;
+
+        if trimmed.is_empty() {
+            self.send_event(
+                turn_context.as_ref(),
+                EventMsg::CheckpointError(CheckpointErrorEvent {
+                    action: CheckpointAction::Create,
+                    name: None,
+                    message: "Checkpoint name cannot be empty.".to_string(),
+                }),
+            )
+            .await;
+            return;
+        }
+
+        let session = Arc::clone(self);
+        let context = Arc::clone(&turn_context);
+        let repo_path = context.cwd.clone();
+        let checkpoint_name = trimmed.to_string();
+        tokio::spawn(async move {
+            session
+                .notify_background_event(
+                    context.as_ref(),
+                    format!("Saving checkpoint `{checkpoint_name}`..."),
+                )
+                .await;
+
+            let capture = tokio::task::spawn_blocking(move || {
+                let options = CreateGhostCommitOptions::new(&repo_path);
+                create_ghost_commit(&options)
+            })
+            .await;
+
+            match capture {
+                Ok(Ok(ghost_commit)) => {
+                    let created_at = Some(current_timestamp());
+                    let metadata = CheckpointMetadata {
+                        name: checkpoint_name.clone(),
+                        created_at: created_at.clone(),
+                    };
+                    session
+                        .record_conversation_items(
+                            context.as_ref(),
+                            &[ResponseItem::GhostSnapshot {
+                                ghost_commit: ghost_commit.clone(),
+                                checkpoint: Some(metadata),
+                            }],
+                        )
+                        .await;
+
+                    let checkpoint = checkpoint_entry(&checkpoint_name, &ghost_commit, created_at);
+                    session
+                        .send_event(
+                            context.as_ref(),
+                            EventMsg::CheckpointCreated(CheckpointCreatedEvent { checkpoint }),
+                        )
+                        .await;
+                }
+                Ok(Err(err)) => {
+                    session
+                        .send_event(
+                            context.as_ref(),
+                            EventMsg::CheckpointError(CheckpointErrorEvent {
+                                action: CheckpointAction::Create,
+                                name: Some(checkpoint_name.clone()),
+                                message: format!("Failed to create checkpoint: {err}"),
+                            }),
+                        )
+                        .await;
+                }
+                Err(err) => {
+                    session
+                        .send_event(
+                            context.as_ref(),
+                            EventMsg::CheckpointError(CheckpointErrorEvent {
+                                action: CheckpointAction::Create,
+                                name: Some(checkpoint_name.clone()),
+                                message: format!("Failed to create checkpoint: {err}"),
+                            }),
+                        )
+                        .await;
+                }
+            }
+        });
+    }
+
+    pub(crate) async fn restore_checkpoint(self: &Arc<Self>, sub_id: String, name: String) {
+        let trimmed = name.trim();
+        let turn_context = self
+            .new_turn_with_sub_id(sub_id, SessionSettingsUpdate::default())
+            .await;
+
+        if trimmed.is_empty() {
+            self.send_event(
+                turn_context.as_ref(),
+                EventMsg::CheckpointError(CheckpointErrorEvent {
+                    action: CheckpointAction::Restore,
+                    name: None,
+                    message: "Checkpoint name cannot be empty.".to_string(),
+                }),
+            )
+            .await;
+            return;
+        }
+
+        let mut history = self.clone_history().await;
+        let maybe_checkpoint =
+            history
+                .get_history()
+                .into_iter()
+                .rev()
+                .find_map(|item| match item {
+                    ResponseItem::GhostSnapshot {
+                        ghost_commit,
+                        checkpoint: Some(metadata),
+                    } if metadata.name == trimmed => Some((ghost_commit, metadata)),
+                    _ => None,
+                });
+
+        let Some((ghost_commit, metadata)) = maybe_checkpoint else {
+            self.send_event(
+                turn_context.as_ref(),
+                EventMsg::CheckpointError(CheckpointErrorEvent {
+                    action: CheckpointAction::Restore,
+                    name: Some(trimmed.to_string()),
+                    message: format!("Checkpoint `{trimmed}` not found."),
+                }),
+            )
+            .await;
+            return;
+        };
+
+        let session = Arc::clone(self);
+        let context = Arc::clone(&turn_context);
+        let repo_path = context.cwd.clone();
+        let checkpoint_name = metadata.name.clone();
+        let created_at = metadata.created_at.clone();
+        let restore_commit = ghost_commit.clone();
+        tokio::spawn(async move {
+            session
+                .notify_background_event(
+                    context.as_ref(),
+                    format!("Restoring checkpoint `{checkpoint_name}`..."),
+                )
+                .await;
+
+            let restore_result = tokio::task::spawn_blocking(move || {
+                restore_ghost_commit(&repo_path, &restore_commit)
+            })
+            .await;
+
+            match restore_result {
+                Ok(Ok(())) => {
+                    let checkpoint = checkpoint_entry(&checkpoint_name, &ghost_commit, created_at);
+                    session
+                        .send_event(
+                            context.as_ref(),
+                            EventMsg::CheckpointRestored(CheckpointRestoredEvent { checkpoint }),
+                        )
+                        .await;
+                }
+                Ok(Err(err)) => {
+                    session
+                        .send_event(
+                            context.as_ref(),
+                            EventMsg::CheckpointError(CheckpointErrorEvent {
+                                action: CheckpointAction::Restore,
+                                name: Some(checkpoint_name.clone()),
+                                message: format!("Failed to restore checkpoint: {err}"),
+                            }),
+                        )
+                        .await;
+                }
+                Err(err) => {
+                    session
+                        .send_event(
+                            context.as_ref(),
+                            EventMsg::CheckpointError(CheckpointErrorEvent {
+                                action: CheckpointAction::Restore,
+                                name: Some(checkpoint_name.clone()),
+                                message: format!("Failed to restore checkpoint: {err}"),
+                            }),
+                        )
+                        .await;
+                }
+            }
+        });
+    }
+
+    pub(crate) async fn list_checkpoints(self: &Arc<Self>, sub_id: String) {
+        let turn_context = self
+            .new_turn_with_sub_id(sub_id, SessionSettingsUpdate::default())
+            .await;
+        let mut history = self.clone_history().await;
+        let mut checkpoints: Vec<CheckpointEntry> = history
+            .get_history()
+            .into_iter()
+            .filter_map(|item| checkpoint_entry_from_item(&item))
+            .collect();
+        checkpoints.reverse();
+
+        self.send_event(
+            turn_context.as_ref(),
+            EventMsg::CheckpointList(CheckpointListEvent { checkpoints }),
+        )
+        .await;
+    }
+
     pub(crate) async fn notify_stream_error(
         &self,
         turn_context: &TurnContext,
@@ -1378,6 +1603,36 @@ impl Session {
     }
 }
 
+fn checkpoint_entry(
+    name: &str,
+    ghost_commit: &GhostCommit,
+    created_at: Option<String>,
+) -> CheckpointEntry {
+    CheckpointEntry {
+        name: name.to_string(),
+        commit_id: ghost_commit.id().to_string(),
+        created_at,
+    }
+}
+
+fn checkpoint_entry_from_item(item: &ResponseItem) -> Option<CheckpointEntry> {
+    match item {
+        ResponseItem::GhostSnapshot {
+            ghost_commit,
+            checkpoint: Some(metadata),
+        } => Some(checkpoint_entry(
+            &metadata.name,
+            ghost_commit,
+            metadata.created_at.clone(),
+        )),
+        _ => None,
+    }
+}
+
+fn current_timestamp() -> String {
+    Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
+}
+
 impl Session {
     pub async fn clone_original_config(&self) -> anyhow::Result<Arc<Config>> {
         let state = self.state.lock().await;
@@ -1447,6 +1702,15 @@ async fn submission_loop(sess: Arc<Session>, config: Arc<Config>, rx_sub: Receiv
             }
             Op::Undo => {
                 handlers::undo(&sess, sub.id.clone()).await;
+            }
+            Op::CreateCheckpoint { name } => {
+                handlers::create_checkpoint(&sess, sub.id.clone(), name).await;
+            }
+            Op::RestoreCheckpoint { name } => {
+                handlers::restore_checkpoint(&sess, sub.id.clone(), name).await;
+            }
+            Op::ListCheckpoints => {
+                handlers::list_checkpoints(&sess, sub.id.clone()).await;
             }
             Op::Compact => {
                 handlers::compact(&sess, sub.id.clone()).await;
@@ -1736,6 +2000,18 @@ mod handlers {
             .await;
         sess.spawn_task(turn_context, Vec::new(), UndoTask::new())
             .await;
+    }
+
+    pub async fn create_checkpoint(sess: &Arc<Session>, sub_id: String, name: String) {
+        sess.create_checkpoint(sub_id, name).await;
+    }
+
+    pub async fn restore_checkpoint(sess: &Arc<Session>, sub_id: String, name: String) {
+        sess.restore_checkpoint(sub_id, name).await;
+    }
+
+    pub async fn list_checkpoints(sess: &Arc<Session>, sub_id: String) {
+        sess.list_checkpoints(sub_id).await;
     }
 
     pub async fn compact(sess: &Arc<Session>, sub_id: String) {

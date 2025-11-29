@@ -9,7 +9,7 @@ Codex Kaioken is a fork of OpenAI’s Codex CLI that focuses on aggressive UX up
 - **Real-time subagent UI** – helper agents stream their tool calls, diffs, and reasoning in dedicated panes so you can see exactly what each agent is doing.
 - **Parallel orchestration** – the main session automatically spins up specialized subagents for exploration, execution, or research tasks, and gathers their output back into the primary transcript.
 - **Semantic search tool** – when [`sgrep`](https://github.com/Rika-Labs/sgrep) is on `PATH`, Kaioken exposes a `semantic_search` tool for fast ranked code lookups.
-- **Snapshot-aware undo** – `/undo` restores the last ghost snapshot taken during a turn, with better task metadata so it’s obvious what will be reverted.
+- **Snapshot-aware undo & checkpoints** – `/undo` restores the last ghost snapshot, and `/checkpoint <name>` / `/restore <name>` let you capture and jump to your own save points without touching git history. The inline status indicator now clears the moment a checkpoint completes, so you no longer get stuck with a lingering “Saving…” spinner after the snapshot is already available.
 - **MCP + sandbox tooling** – everything from upstream Codex (execpolicy, MCP client/server, approvals, sandbox helpers) remains available, but tuned for the Kaioken workflow.
 
 ## Quick start

@@ -18,6 +18,8 @@ use codex_core::protocol::AgentReasoningDeltaEvent;
 use codex_core::protocol::AgentReasoningEvent;
 use codex_core::protocol::ApplyPatchApprovalRequestEvent;
 use codex_core::protocol::BackgroundEventEvent;
+use codex_core::protocol::CheckpointCreatedEvent;
+use codex_core::protocol::CheckpointEntry;
 use codex_core::protocol::Event;
 use codex_core::protocol::EventMsg;
 use codex_core::protocol::ExecApprovalRequestEvent;
@@ -1111,6 +1113,69 @@ fn slash_undo_sends_op() {
         Ok(AppEvent::CodexOp(Op::Undo)) => {}
         other => panic!("expected AppEvent::CodexOp(Op::Undo), got {other:?}"),
     }
+}
+
+#[test]
+fn checkpoint_command_submits_op() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual();
+
+    chat.submit_user_message(UserMessage {
+        text: "/checkpoint base".into(),
+        image_paths: Vec::new(),
+    });
+
+    match op_rx.try_recv() {
+        Ok(Op::CreateCheckpoint { name }) => assert_eq!(name, "base"),
+        other => panic!("expected CreateCheckpoint op, got {other:?}"),
+    }
+}
+
+#[test]
+fn restore_checkpoint_command_submits_op() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual();
+
+    chat.submit_user_message(UserMessage {
+        text: "/restore base".into(),
+        image_paths: Vec::new(),
+    });
+
+    match op_rx.try_recv() {
+        Ok(Op::RestoreCheckpoint { name }) => assert_eq!(name, "base"),
+        other => panic!("expected RestoreCheckpoint op, got {other:?}"),
+    }
+}
+
+#[test]
+fn list_checkpoints_command_submits_op() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual();
+
+    chat.submit_user_message(UserMessage {
+        text: "/checkpoints".into(),
+        image_paths: Vec::new(),
+    });
+
+    match op_rx.try_recv() {
+        Ok(Op::ListCheckpoints) => {}
+        other => panic!("expected ListCheckpoints op, got {other:?}"),
+    }
+}
+
+#[test]
+fn checkpoint_completion_clears_spinner() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual();
+
+    chat.on_background_event("Saving checkpoint `snap`...".to_string());
+    assert!(chat.bottom_pane.status_indicator_visible());
+
+    chat.on_checkpoint_created(CheckpointCreatedEvent {
+        checkpoint: CheckpointEntry {
+            name: "snap".into(),
+            commit_id: "12345678".into(),
+            created_at: None,
+        },
+    });
+
+    assert!(!chat.bottom_pane.status_indicator_visible());
 }
 
 #[test]

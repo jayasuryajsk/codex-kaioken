@@ -193,6 +193,15 @@ pub enum Op {
     /// Request Codex to undo a turn (turn are stacked so it is the same effect as CMD + Z).
     Undo,
 
+    /// Capture a named checkpoint that the user can restore later.
+    CreateCheckpoint { name: String },
+
+    /// Restore a previously created checkpoint by name.
+    RestoreCheckpoint { name: String },
+
+    /// List all checkpoints captured in this session.
+    ListCheckpoints,
+
     /// Request a code review from the agent.
     Review { review_request: ReviewRequest },
 
@@ -534,6 +543,14 @@ pub enum EventMsg {
     UndoStarted(UndoStartedEvent),
 
     UndoCompleted(UndoCompletedEvent),
+
+    CheckpointCreated(CheckpointCreatedEvent),
+
+    CheckpointRestored(CheckpointRestoredEvent),
+
+    CheckpointList(CheckpointListEvent),
+
+    CheckpointError(CheckpointErrorEvent),
 
     /// Notification that a model stream experienced an error or disconnect
     /// and the system is handling it (e.g., retrying with backoff).
@@ -1505,6 +1522,49 @@ pub struct UndoCompletedEvent {
     pub success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+pub struct CheckpointEntry {
+    pub name: String,
+    pub commit_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
+pub struct CheckpointCreatedEvent {
+    pub checkpoint: CheckpointEntry,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
+pub struct CheckpointRestoredEvent {
+    pub checkpoint: CheckpointEntry,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
+pub struct CheckpointListEvent {
+    pub checkpoints: Vec<CheckpointEntry>,
+}
+
+#[derive(
+    Debug, Clone, Copy, Deserialize, Serialize, JsonSchema, TS, PartialEq, Eq, Display, Hash,
+)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum CheckpointAction {
+    Create,
+    Restore,
+    List,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
+pub struct CheckpointErrorEvent {
+    pub action: CheckpointAction,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]

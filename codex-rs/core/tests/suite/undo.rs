@@ -486,3 +486,58 @@ async fn undo_overwrites_manual_edits_after_turn() -> Result<()> {
 
     Ok(())
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn checkpoint_create_restore_and_list() -> Result<()> {
+    skip_if_no_network!(Ok(()));
+
+    let harness = undo_harness().await?;
+    init_git_repo(harness.cwd())?;
+
+    let tracked = harness.path("tracked.txt");
+    fs::write(&tracked, "original\n")?;
+    git(harness.cwd(), &["add", "tracked.txt"])?;
+    git(harness.cwd(), &["commit", "-m", "seed tracked file"])?;
+
+    let codex = Arc::clone(&harness.test().codex);
+    codex
+        .submit(Op::CreateCheckpoint {
+            name: "baseline".to_string(),
+        })
+        .await?;
+    let created = wait_for_event_match(&codex, |msg| match msg {
+        EventMsg::CheckpointCreated(ev) => Some(ev.checkpoint.clone()),
+        _ => None,
+    })
+    .await;
+    assert_eq!(created.name, "baseline");
+
+    fs::write(&tracked, "modified\n")?;
+    assert_eq!(fs::read_to_string(&tracked)?, "modified\n");
+
+    codex
+        .submit(Op::RestoreCheckpoint {
+            name: "baseline".to_string(),
+        })
+        .await?;
+    let restored = wait_for_event_match(&codex, |msg| match msg {
+        EventMsg::CheckpointRestored(ev) => Some(ev.checkpoint.clone()),
+        _ => None,
+    })
+    .await;
+    assert_eq!(restored.name, "baseline");
+    assert_eq!(fs::read_to_string(&tracked)?, "original\n");
+
+    codex.submit(Op::ListCheckpoints).await?;
+    let listed = wait_for_event_match(&codex, |msg| match msg {
+        EventMsg::CheckpointList(ev) => Some(ev.checkpoints.clone()),
+        _ => None,
+    })
+    .await;
+    assert!(
+        listed.iter().any(|entry| entry.name == "baseline"),
+        "expected checkpoint in list"
+    );
+
+    Ok(())
+}
