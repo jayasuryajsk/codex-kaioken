@@ -28,6 +28,7 @@ use codex_common::format_env_display::format_env_display;
 use codex_core::config::Config;
 use codex_core::config::types::McpServerTransportConfig;
 use codex_core::config::types::ReasoningSummaryFormat;
+use codex_core::protocol::CheckpointEntry;
 use codex_core::protocol::FileChange;
 use codex_core::protocol::McpAuthStatus;
 use codex_core::protocol::McpInvocation;
@@ -1250,6 +1251,38 @@ pub(crate) fn new_info_event(message: String, hint: Option<String>) -> PlainHist
         line.push(hint.dark_gray());
     }
     let lines: Vec<Line<'static>> = vec![line.into()];
+    PlainHistoryCell { lines }
+}
+
+pub(crate) fn new_checkpoint_list(entries: &[CheckpointEntry]) -> PlainHistoryCell {
+    let mut lines: Vec<Line<'static>> = Vec::new();
+    lines.push(vec!["• ".dim(), "Checkpoints".into()].into());
+    if entries.is_empty() {
+        lines.push(vec!["  └ (none yet)".dim()].into());
+    } else {
+        for (idx, entry) in entries.iter().enumerate() {
+            let connector = if idx + 1 == entries.len() {
+                "  └ "
+            } else {
+                "  ├ "
+            };
+            let short_id: String = entry.commit_id.chars().take(7).collect();
+            let detail = entry
+                .created_at
+                .as_deref()
+                .map(|ts| format!("{short_id} · {ts}"))
+                .unwrap_or(short_id);
+            lines.push(
+                vec![
+                    connector.into(),
+                    format!("`{}`", entry.name).into(),
+                    " ".into(),
+                    detail.dim(),
+                ]
+                .into(),
+            );
+        }
+    }
     PlainHistoryCell { lines }
 }
 

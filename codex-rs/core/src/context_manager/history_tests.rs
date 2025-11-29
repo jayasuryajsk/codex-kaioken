@@ -149,6 +149,7 @@ fn non_last_reasoning_tokens_ignore_entries_after_last_user() {
 fn get_history_for_prompt_drops_ghost_commits() {
     let items = vec![ResponseItem::GhostSnapshot {
         ghost_commit: GhostCommit::new("ghost-1".to_string(), None, Vec::new(), Vec::new()),
+        checkpoint: None,
     }];
     let mut history = create_history_with_items(items);
     let filtered = history.get_history_for_prompt();

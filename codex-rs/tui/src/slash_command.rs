@@ -19,6 +19,9 @@ pub enum SlashCommand {
     Init,
     Compact,
     Undo,
+    Checkpoint,
+    RestoreCheckpoint,
+    ListCheckpoints,
     Diff,
     Mention,
     Status,
@@ -41,6 +44,9 @@ impl SlashCommand {
             SlashCommand::Compact => "summarize conversation to prevent hitting the context limit",
             SlashCommand::Review => "review my current changes and find issues",
             SlashCommand::Undo => "ask Codex to undo a turn",
+            SlashCommand::Checkpoint => "save a named checkpoint (use `/checkpoint <name>`)",
+            SlashCommand::RestoreCheckpoint => "restore a saved checkpoint (`/restore <name>`)",
+            SlashCommand::ListCheckpoints => "list saved checkpoints",
             SlashCommand::Quit | SlashCommand::Exit => "exit Codex",
             SlashCommand::Diff => "show git diff (including untracked files)",
             SlashCommand::Mention => "mention a file",
@@ -67,11 +73,14 @@ impl SlashCommand {
             | SlashCommand::Init
             | SlashCommand::Compact
             | SlashCommand::Undo
+            | SlashCommand::Checkpoint
+            | SlashCommand::RestoreCheckpoint
             | SlashCommand::Model
             | SlashCommand::Approvals
             | SlashCommand::Review
             | SlashCommand::Logout => false,
             SlashCommand::Diff
+            | SlashCommand::ListCheckpoints
             | SlashCommand::Mention
             | SlashCommand::Status
             | SlashCommand::Mcp

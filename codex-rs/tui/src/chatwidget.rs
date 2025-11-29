@@ -20,6 +20,12 @@ use codex_core::protocol::AgentReasoningRawContentDeltaEvent;
 use codex_core::protocol::AgentReasoningRawContentEvent;
 use codex_core::protocol::ApplyPatchApprovalRequestEvent;
 use codex_core::protocol::BackgroundEventEvent;
+use codex_core::protocol::CheckpointAction;
+use codex_core::protocol::CheckpointCreatedEvent;
+use codex_core::protocol::CheckpointEntry;
+use codex_core::protocol::CheckpointErrorEvent;
+use codex_core::protocol::CheckpointListEvent;
+use codex_core::protocol::CheckpointRestoredEvent;
 use codex_core::protocol::DeprecationNoticeEvent;
 use codex_core::protocol::ErrorEvent;
 use codex_core::protocol::Event;
@@ -356,6 +362,46 @@ impl From<&str> for UserMessage {
         Self {
             text: text.to_string(),
             image_paths: Vec::new(),
+        }
+    }
+}
+
+enum LocalCommand {
+    Checkpoint(String),
+    Restore(String),
+    List,
+}
+
+impl LocalCommand {
+    fn parse(text: &str) -> Option<Self> {
+        fn tail_segment<'a>(text: &'a str, command: &str) -> Option<&'a str> {
+            let rest = text.strip_prefix(command)?;
+            if rest.is_empty() {
+                Some(rest)
+            } else if rest.chars().next().map_or(false, char::is_whitespace) {
+                Some(rest.trim_start())
+            } else {
+                None
+            }
+        }
+
+        if let Some(rest) = tail_segment(text, "/checkpoint") {
+            return Some(LocalCommand::Checkpoint(rest.to_string()));
+        }
+        if let Some(rest) = tail_segment(text, "/restore") {
+            return Some(LocalCommand::Restore(rest.to_string()));
+        }
+        if text == "/checkpoints" {
+            return Some(LocalCommand::List);
+        }
+        None
+    }
+
+    fn name(&self) -> &'static str {
+        match self {
+            LocalCommand::Checkpoint(_) => "/checkpoint",
+            LocalCommand::Restore(_) => "/restore",
+            LocalCommand::List => "/checkpoints",
         }
     }
 }
@@ -982,6 +1028,11 @@ impl ChatWidget {
         self.set_status_header(message);
     }
 
+    fn clear_status_indicator(&mut self) {
+        self.bottom_pane.set_interrupt_hint_visible(false);
+        self.bottom_pane.hide_status_indicator();
+    }
+
     fn on_undo_started(&mut self, event: UndoStartedEvent) {
         self.bottom_pane.ensure_status_indicator();
         self.bottom_pane.set_interrupt_hint_visible(false);
@@ -993,7 +1044,7 @@ impl ChatWidget {
 
     fn on_undo_completed(&mut self, event: UndoCompletedEvent) {
         let UndoCompletedEvent { success, message } = event;
-        self.bottom_pane.hide_status_indicator();
+        self.clear_status_indicator();
         let message = message.unwrap_or_else(|| {
             if success {
                 "Undo completed successfully.".to_string()
@@ -1006,6 +1057,43 @@ impl ChatWidget {
         } else {
             self.add_error_message(message);
         }
+    }
+
+    fn on_checkpoint_created(&mut self, event: CheckpointCreatedEvent) {
+        self.clear_status_indicator();
+        let hint = Some(checkpoint_hint(&event.checkpoint));
+        self.add_info_message(
+            format!("Checkpoint `{}` saved.", event.checkpoint.name),
+            hint,
+        );
+    }
+
+    fn on_checkpoint_restored(&mut self, event: CheckpointRestoredEvent) {
+        self.clear_status_indicator();
+        let hint = Some(checkpoint_hint(&event.checkpoint));
+        self.add_info_message(
+            format!("Restored checkpoint `{}`.", event.checkpoint.name),
+            hint,
+        );
+    }
+
+    fn on_checkpoint_list(&mut self, event: CheckpointListEvent) {
+        self.clear_status_indicator();
+        self.add_to_history(history_cell::new_checkpoint_list(&event.checkpoints));
+    }
+
+    fn on_checkpoint_error(&mut self, event: CheckpointErrorEvent) {
+        let mut prefix = match event.action {
+            CheckpointAction::Create => "Checkpoint save failed".to_string(),
+            CheckpointAction::Restore => "Checkpoint restore failed".to_string(),
+            CheckpointAction::List => "Checkpoint listing failed".to_string(),
+        };
+        if let Some(name) = event.name {
+            prefix.push_str(&format!(" (`{name}`)"));
+        }
+        let message = format!("{prefix}: {}", event.message);
+        self.clear_status_indicator();
+        self.add_error_message(message);
     }
 
     fn on_stream_error(&mut self, message: String) {
@@ -1621,6 +1709,18 @@ impl ChatWidget {
             SlashCommand::Undo => {
                 self.app_event_tx.send(AppEvent::CodexOp(Op::Undo));
             }
+            SlashCommand::Checkpoint => {
+                self.insert_str("/checkpoint ");
+                self.request_redraw();
+            }
+            SlashCommand::RestoreCheckpoint => {
+                self.insert_str("/restore ");
+                self.request_redraw();
+            }
+            SlashCommand::ListCheckpoints => {
+                self.app_event_tx
+                    .send(AppEvent::CodexOp(Op::ListCheckpoints));
+            }
             SlashCommand::Diff => {
                 self.add_diff_in_progress();
                 let tx = self.app_event_tx.clone();
@@ -1775,6 +1875,28 @@ impl ChatWidget {
             return;
         }
 
+        if let Some(command) = LocalCommand::parse(&text) {
+            if !image_paths.is_empty() {
+                self.add_to_history(history_cell::new_error_event(
+                    "Checkpoint commands do not support image attachments.".to_string(),
+                ));
+                return;
+            }
+            if matches!(
+                command,
+                LocalCommand::Checkpoint(_) | LocalCommand::Restore(_)
+            ) && self.bottom_pane.is_task_running()
+            {
+                self.add_to_history(history_cell::new_error_event(format!(
+                    "Finish the current task before running '{}'.",
+                    command.name()
+                )));
+                return;
+            }
+            self.handle_local_command(command);
+            return;
+        }
+
         if !text.is_empty() {
             items.push(UserInput::Text { text: text.clone() });
         }
@@ -1803,6 +1925,33 @@ impl ChatWidget {
             self.add_to_history(history_cell::new_user_prompt(text));
         }
         self.needs_final_message_separator = false;
+    }
+
+    fn handle_local_command(&mut self, command: LocalCommand) {
+        match command {
+            LocalCommand::Checkpoint(name) => {
+                if name.trim().is_empty() {
+                    self.add_to_history(history_cell::new_error_event(
+                        "Provide a checkpoint name (e.g., `/checkpoint before-fix`).".to_string(),
+                    ));
+                    return;
+                }
+                self.submit_op(Op::CreateCheckpoint { name });
+            }
+            LocalCommand::Restore(name) => {
+                if name.trim().is_empty() {
+                    self.add_to_history(history_cell::new_error_event(
+                        "Provide a checkpoint name to restore (e.g., `/restore before-fix`)."
+                            .to_string(),
+                    ));
+                    return;
+                }
+                self.submit_op(Op::RestoreCheckpoint { name });
+            }
+            LocalCommand::List => {
+                self.submit_op(Op::ListCheckpoints);
+            }
+        }
     }
 
     /// Replay a subset of initial events into the UI to seed the transcript when
@@ -1914,6 +2063,10 @@ impl ChatWidget {
             }
             EventMsg::UndoStarted(ev) => self.on_undo_started(ev),
             EventMsg::UndoCompleted(ev) => self.on_undo_completed(ev),
+            EventMsg::CheckpointCreated(ev) => self.on_checkpoint_created(ev),
+            EventMsg::CheckpointRestored(ev) => self.on_checkpoint_restored(ev),
+            EventMsg::CheckpointList(ev) => self.on_checkpoint_list(ev),
+            EventMsg::CheckpointError(ev) => self.on_checkpoint_error(ev),
             EventMsg::StreamError(StreamErrorEvent { message, .. }) => {
                 self.on_stream_error(message)
             }
@@ -3769,6 +3922,19 @@ impl HistoryCell for SubagentHistoryCell {
         }
         lines
     }
+}
+
+fn checkpoint_hint(entry: &CheckpointEntry) -> String {
+    let short_id = short_commit_id(&entry.commit_id);
+    entry
+        .created_at
+        .as_deref()
+        .map(|ts| format!("{short_id} · {ts}"))
+        .unwrap_or(short_id)
+}
+
+fn short_commit_id(commit_id: &str) -> String {
+    commit_id.chars().take(7).collect()
 }
 
 #[cfg(test)]

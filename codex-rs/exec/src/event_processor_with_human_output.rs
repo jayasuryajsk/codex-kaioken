@@ -4,6 +4,11 @@ use codex_core::config::Config;
 use codex_core::protocol::AgentMessageEvent;
 use codex_core::protocol::AgentReasoningRawContentEvent;
 use codex_core::protocol::BackgroundEventEvent;
+use codex_core::protocol::CheckpointCreatedEvent;
+use codex_core::protocol::CheckpointEntry;
+use codex_core::protocol::CheckpointErrorEvent;
+use codex_core::protocol::CheckpointListEvent;
+use codex_core::protocol::CheckpointRestoredEvent;
 use codex_core::protocol::DeprecationNoticeEvent;
 use codex_core::protocol::ErrorEvent;
 use codex_core::protocol::Event;
@@ -108,6 +113,18 @@ impl EventProcessorWithHumanOutput {
                 last_total_token_usage: None,
                 final_message: None,
             }
+        }
+    }
+
+    fn format_checkpoint_entry(&self, entry: &CheckpointEntry) -> String {
+        let short_commit = entry.commit_id.get(..8).unwrap_or(&entry.commit_id);
+        if let Some(created_at) = &entry.created_at {
+            format!(
+                "`{}` (commit {short_commit}, created {created_at})",
+                entry.name
+            )
+        } else {
+            format!("`{}` (commit {short_commit})", entry.name)
         }
     }
 }
@@ -255,6 +272,56 @@ impl EventProcessor for EventProcessorWithHumanOutput {
             }
             EventMsg::BackgroundEvent(BackgroundEventEvent { message }) => {
                 ts_msg!(self, "{}", message.style(self.dimmed));
+            }
+            EventMsg::CheckpointCreated(CheckpointCreatedEvent { checkpoint }) => {
+                ts_msg!(
+                    self,
+                    "{} saved {}",
+                    "checkpoint:".style(self.cyan),
+                    self.format_checkpoint_entry(&checkpoint)
+                );
+            }
+            EventMsg::CheckpointRestored(CheckpointRestoredEvent { checkpoint }) => {
+                ts_msg!(
+                    self,
+                    "{} restored {}",
+                    "checkpoint:".style(self.cyan),
+                    self.format_checkpoint_entry(&checkpoint)
+                );
+            }
+            EventMsg::CheckpointList(CheckpointListEvent { checkpoints }) => {
+                if checkpoints.is_empty() {
+                    ts_msg!(
+                        self,
+                        "{} no checkpoints found",
+                        "checkpoint:".style(self.cyan)
+                    );
+                } else {
+                    ts_msg!(
+                        self,
+                        "{} available checkpoints:",
+                        "checkpoint:".style(self.cyan)
+                    );
+                    for entry in checkpoints {
+                        ts_msg!(self, "  - {}", self.format_checkpoint_entry(&entry));
+                    }
+                }
+            }
+            EventMsg::CheckpointError(CheckpointErrorEvent {
+                action,
+                name,
+                message,
+            }) => {
+                let label = match name {
+                    Some(name) => format!("{action} `{name}`"),
+                    None => action.to_string(),
+                };
+                ts_msg!(
+                    self,
+                    "{} {} failed: {message}",
+                    "checkpoint:".style(self.red).style(self.bold),
+                    label
+                );
             }
             EventMsg::StreamError(StreamErrorEvent { message, .. }) => {
                 ts_msg!(self, "{}", message.style(self.dimmed));
