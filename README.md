@@ -2,17 +2,39 @@
 
 Codex Kaioken is a fork of OpenAI’s Codex CLI that focuses on aggressive UX upgrades, multi-agent workflows, and tight integration with developer tooling. The Rust workspace that powers the CLI lives in [`codex-rs/`](./codex-rs), and every binary built from this repo ships as `codex-kaioken` to avoid clashing with upstream `codex`.
 
+<p align="center"><code>npm i -g codex-kaioken</code><br />or <code>brew install --cask codex-kaioken</code></p>
+
 > **Why “Kaioken”?** It is our “power-up” harness: we keep stacking capabilities (parallel subagents, real-time streaming, semantic search, MCP integrations, etc.) so that Codex feels faster and more autonomous without any extra setup from the user.
 
 ## Highlights
 
+- **Plan-first workflow** – toggle plan mode with `/plan` or <kbd>Shift</kbd>+<kbd>Tab</kbd>. The composer turns cyan while your next request is converted into a checklist, and `/settings` lets you choose coarse, detailed, or auto plan granularity.
+- **Session settings palette** – quickly toggle plan detail, rate-limit footer visibility, and subagent concurrency (1–8 helpers) from `/settings` instead of hand-editing `config.toml`.
 - **Real-time subagent UI** – helper agents stream their tool calls, diffs, and reasoning in dedicated panes so you can see exactly what each agent is doing.
 - **Parallel orchestration** – the main session automatically spins up specialized subagents for exploration, execution, or research tasks, and gathers their output back into the primary transcript.
 - **Semantic search tool** – when [`sgrep`](https://github.com/Rika-Labs/sgrep) is on `PATH`, Kaioken exposes a `semantic_search` tool for fast ranked code lookups.
-- **Snapshot-aware undo & checkpoints** – `/undo` restores the last ghost snapshot, and `/checkpoint <name>` / `/restore <name>` let you capture and jump to your own save points without touching git history. The inline status indicator now clears the moment a checkpoint completes, so you no longer get stuck with a lingering “Saving…” spinner after the snapshot is already available.
+- **Snapshot-aware undo & checkpoints** – `/undo` restores the last ghost snapshot, and `/checkpoint save|list|restore` lets you capture and jump to your own save points without touching git history. The inline status indicator now clears the moment a checkpoint completes, so you never get stuck watching a phantom spinner.
 - **MCP + sandbox tooling** – everything from upstream Codex (execpolicy, MCP client/server, approvals, sandbox helpers) remains available, but tuned for the Kaioken workflow.
 
 ## Quick start
+
+### Install & run
+
+Use your preferred package manager:
+
+```bash
+npm install -g codex-kaioken
+# or
+brew install --cask codex-kaioken
+```
+
+Then launch:
+
+```bash
+codex-kaioken
+```
+
+### Build from source
 
 ```bash
 git clone https://github.com/jayasuryajsk/codex-kaioken.git
@@ -30,8 +52,6 @@ cp target/debug/codex ~/.codex-kaioken/bin/codex-kaioken
 
 Keep `~/.codex-kaioken/bin` ahead of any upstream `codex` install on your `PATH` so you always launch the Kaioken binary.
 
-## Documentation
-
 Most docs live under [`codex-rs/docs/`](./codex-rs/docs):
 
 - [Getting started](./codex-rs/docs/getting-started.md) – walkthrough, slash commands, example prompts.
@@ -47,7 +67,3 @@ Most docs live under [`codex-rs/docs/`](./codex-rs/docs):
 - `.github/` – CI, issue templates, assets used in this README.
 
 When contributing code or docs, work inside `codex-rs`, run the `just` recipes mentioned in that README, and open pull requests against this repository.
-
-## License
-
-Codex Kaioken inherits the upstream [Apache-2.0 License](./codex-rs/LICENSE). Any new changes in this fork remain under the same license.
