@@ -32,6 +32,8 @@ pub(crate) use list_selection_view::SelectionViewParams;
 mod feedback_view;
 pub(crate) use feedback_view::feedback_selection_params;
 pub(crate) use feedback_view::feedback_upload_consent_params;
+mod plan_review_view;
+pub(crate) use plan_review_view::PlanReviewView;
 mod paste_burst;
 pub mod popup_consts;
 mod queued_user_messages;
@@ -239,6 +241,12 @@ impl BottomPane {
         self.request_redraw();
     }
 
+    pub(crate) fn set_plan_mode_enabled(&mut self, enabled: bool) {
+        if self.composer.set_plan_mode_enabled(enabled) {
+            self.request_redraw();
+        }
+    }
+
     /// Replace the composer text with `text`.
     pub(crate) fn set_composer_text(&mut self, text: String) {
         self.composer.set_text_content(text);
@@ -388,6 +396,16 @@ impl BottomPane {
         }
     }
 
+    pub(crate) fn set_rate_limit_summary(&mut self, summary: Option<String>) {
+        if self.composer.set_rate_limit_summary(summary) {
+            self.request_redraw();
+        }
+    }
+
+    pub(crate) fn semantic_status_snapshot(&self) -> (SemanticStatus, Option<String>) {
+        (self.semantic_status, self.semantic_message.clone())
+    }
+
     pub(crate) fn tick(&mut self) {
         if !matches!(self.semantic_status, SemanticStatus::Indexing) {
             return;
@@ -419,6 +437,11 @@ impl BottomPane {
     /// Update custom prompts available for the slash popup.
     pub(crate) fn set_custom_prompts(&mut self, prompts: Vec<CustomPrompt>) {
         self.composer.set_custom_prompts(prompts);
+        self.request_redraw();
+    }
+
+    pub(crate) fn set_placeholder_text(&mut self, text: String) {
+        self.composer.set_placeholder_text(text);
         self.request_redraw();
     }
 

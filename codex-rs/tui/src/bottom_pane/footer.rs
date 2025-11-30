@@ -22,6 +22,7 @@ pub(crate) struct FooterProps {
     pub(crate) semantic_status: SemanticStatus,
     pub(crate) semantic_spinner: char,
     pub(crate) semantic_message: Option<String>,
+    pub(crate) rate_limit_summary: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -90,6 +91,7 @@ fn footer_lines(props: &FooterProps) -> Vec<Line<'static>> {
                 props.semantic_status,
                 props.semantic_spinner,
                 &props.semantic_message,
+                &props.rate_limit_summary,
             );
             line.push_span(" · ".dim());
             line.extend(vec![
@@ -108,6 +110,7 @@ fn footer_lines(props: &FooterProps) -> Vec<Line<'static>> {
             props.semantic_status,
             props.semantic_spinner,
             &props.semantic_message,
+            &props.rate_limit_summary,
         )],
     }
 }
@@ -240,11 +243,16 @@ fn context_window_line(
     status: SemanticStatus,
     spinner: char,
     message: &Option<String>,
+    rate_limit_summary: &Option<String>,
 ) -> Line<'static> {
     let percent = percent.unwrap_or(100).clamp(0, 100);
     let mut spans = vec![Span::from(format!("{percent}% context left")).dim()];
     spans.push(" · ".dim());
     spans.push(semantic_search_status_span(status, spinner, message));
+    if let Some(summary) = rate_limit_summary {
+        spans.push(" · ".dim());
+        spans.push(Span::from(summary.clone()).dim());
+    }
     Line::from(spans)
 }
 
@@ -443,6 +451,7 @@ mod tests {
                 semantic_status: SemanticStatus::Ready,
                 semantic_spinner: '⠋',
                 semantic_message: None,
+                rate_limit_summary: None,
             },
         );
 
@@ -457,6 +466,7 @@ mod tests {
                 semantic_status: SemanticStatus::Ready,
                 semantic_spinner: '⠋',
                 semantic_message: None,
+                rate_limit_summary: None,
             },
         );
 
@@ -471,6 +481,7 @@ mod tests {
                 semantic_status: SemanticStatus::Ready,
                 semantic_spinner: '⠋',
                 semantic_message: None,
+                rate_limit_summary: None,
             },
         );
 
@@ -485,6 +496,7 @@ mod tests {
                 semantic_status: SemanticStatus::Ready,
                 semantic_spinner: '⠋',
                 semantic_message: None,
+                rate_limit_summary: None,
             },
         );
 
@@ -499,6 +511,7 @@ mod tests {
                 semantic_status: SemanticStatus::Ready,
                 semantic_spinner: '⠋',
                 semantic_message: None,
+                rate_limit_summary: None,
             },
         );
 
@@ -513,6 +526,7 @@ mod tests {
                 semantic_status: SemanticStatus::Ready,
                 semantic_spinner: '⠋',
                 semantic_message: None,
+                rate_limit_summary: None,
             },
         );
 
@@ -527,6 +541,7 @@ mod tests {
                 semantic_status: SemanticStatus::Ready,
                 semantic_spinner: '⠋',
                 semantic_message: None,
+                rate_limit_summary: None,
             },
         );
     }

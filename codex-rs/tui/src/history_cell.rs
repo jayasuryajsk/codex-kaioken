@@ -13,6 +13,7 @@ use crate::render::line_utils::line_to_static;
 use crate::render::line_utils::prefix_lines;
 use crate::render::line_utils::push_owned_lines;
 use crate::render::renderable::Renderable;
+use crate::semantic::SemanticStatus;
 use crate::style::user_message_style;
 use crate::text_formatting::format_and_truncate_tool_result;
 use crate::text_formatting::truncate_text;
@@ -28,10 +29,12 @@ use codex_common::format_env_display::format_env_display;
 use codex_core::config::Config;
 use codex_core::config::types::McpServerTransportConfig;
 use codex_core::config::types::ReasoningSummaryFormat;
+use codex_core::protocol::AskForApproval;
 use codex_core::protocol::CheckpointEntry;
 use codex_core::protocol::FileChange;
 use codex_core::protocol::McpAuthStatus;
 use codex_core::protocol::McpInvocation;
+use codex_core::protocol::SandboxPolicy;
 use codex_core::protocol::SessionConfiguredEvent;
 use codex_core::protocol::SubagentTaskStatus;
 use codex_core::protocol_config_types::ReasoningEffort as ReasoningEffortConfig;
@@ -56,8 +59,10 @@ use std::collections::HashMap;
 use std::io::Cursor;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Command;
 use std::time::Duration;
 use std::time::Instant;
+use textwrap::Options;
 use tracing::error;
 use unicode_width::UnicodeWidthStr;
 
@@ -487,8 +492,6 @@ impl HistoryCell for CompletedMcpToolCallWithImageOutput {
     }
 }
 
-pub(crate) const SESSION_HEADER_MAX_INNER_WIDTH: usize = 56; // Just an eyeballed value
-
 pub(crate) fn card_inner_width(width: u16, max_inner_width: usize) -> Option<usize> {
     if width < 4 {
         return None;
@@ -566,6 +569,13 @@ pub(crate) fn padded_emoji(emoji: &str) -> String {
 #[derive(Debug)]
 pub struct SessionInfoCell(CompositeHistoryCell);
 
+#[derive(Debug, Clone)]
+pub(crate) struct WelcomeSnapshot {
+    pub semantic_status: SemanticStatus,
+    pub semantic_message: Option<String>,
+    pub checkpoint_names: Vec<String>,
+}
+
 impl HistoryCell for SessionInfoCell {
     fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
         self.0.display_lines(width)
@@ -582,54 +592,46 @@ impl HistoryCell for SessionInfoCell {
 
 pub(crate) fn new_session_info(
     config: &Config,
+    snapshot: WelcomeSnapshot,
     event: SessionConfiguredEvent,
     is_first_event: bool,
 ) -> SessionInfoCell {
     let SessionConfiguredEvent {
         model,
         reasoning_effort,
+        approval_policy,
+        sandbox_policy,
+        cwd,
         ..
     } = event;
+
     SessionInfoCell(if is_first_event {
-        // Header box rendered as history (so it appears at the very top)
+        let mut mcp_servers: Vec<String> = config.mcp_servers.keys().cloned().collect();
+        mcp_servers.sort();
+        let writable_roots: Vec<PathBuf> = sandbox_policy
+            .get_writable_roots_with_cwd(&cwd)
+            .into_iter()
+            .map(|root| root.root)
+            .collect();
         let header = SessionHeaderHistoryCell::new(
             model,
             reasoning_effort,
-            config.cwd.clone(),
+            cwd,
+            approval_policy,
+            sandbox_policy,
+            mcp_servers,
+            writable_roots,
+            snapshot,
             display_version(),
         );
 
-        // Help lines below the header (new copy and list)
         let help_lines: Vec<Line<'static>> = vec![
-            "  To get started, describe a task or try one of these commands:"
-                .dim()
-                .into(),
-            Line::from(""),
-            Line::from(vec![
-                "  ".into(),
-                "/init".into(),
-                " - create an AGENTS.md file with instructions for Codex".dim(),
-            ]),
-            Line::from(vec![
-                "  ".into(),
-                "/status".into(),
-                " - show current session configuration".dim(),
-            ]),
-            Line::from(vec![
-                "  ".into(),
-                "/approvals".into(),
-                " - choose what Codex can do without approval".dim(),
-            ]),
-            Line::from(vec![
-                "  ".into(),
-                "/model".into(),
-                " - choose what model and reasoning effort to use".dim(),
-            ]),
-            Line::from(vec![
-                "  ".into(),
-                "/review".into(),
-                " - review any changes and find issues".dim(),
-            ]),
+            "Next actions:".bold().into(),
+            "  • Launch helper subagents for focused exploration or edits.".into(),
+            "  • Run /review to inspect pending git changes.".into(),
+            "  • Use /checkpoint save|restore to manage checkpoints.".into(),
+            "  • Adjust approvals or sandbox policies with /approvals.".into(),
+            "  • Update AGENTS.md guidance (rerun /init if needed).".into(),
         ];
 
         CompositeHistoryCell {
@@ -662,6 +664,21 @@ struct SessionHeaderHistoryCell {
     model: String,
     reasoning_effort: Option<ReasoningEffortConfig>,
     directory: PathBuf,
+    approval_policy: AskForApproval,
+    sandbox_policy: SandboxPolicy,
+    mcp_servers: Vec<String>,
+    writable_roots: Vec<PathBuf>,
+    semantic_status: SemanticStatus,
+    semantic_message: Option<String>,
+    checkpoint_names: Vec<String>,
+    git_summary: GitSummary,
+}
+
+#[derive(Debug, Clone)]
+struct GitSummary {
+    branch: Option<String>,
+    head: Option<String>,
+    uncommitted: Option<usize>,
 }
 
 impl SessionHeaderHistoryCell {
@@ -669,13 +686,27 @@ impl SessionHeaderHistoryCell {
         model: String,
         reasoning_effort: Option<ReasoningEffortConfig>,
         directory: PathBuf,
+        approval_policy: AskForApproval,
+        sandbox_policy: SandboxPolicy,
+        mcp_servers: Vec<String>,
+        writable_roots: Vec<PathBuf>,
+        snapshot: WelcomeSnapshot,
         version: &str,
     ) -> Self {
+        let git_summary = GitSummary::collect(&directory);
         Self {
             version: version.to_string(),
             model,
             reasoning_effort,
             directory,
+            approval_policy,
+            sandbox_policy,
+            mcp_servers,
+            writable_roots,
+            semantic_status: snapshot.semantic_status,
+            semantic_message: snapshot.semantic_message,
+            checkpoint_names: snapshot.checkpoint_names.into_iter().take(3).collect(),
+            git_summary,
         }
     }
 
@@ -716,39 +747,136 @@ impl SessionHeaderHistoryCell {
             ReasoningEffortConfig::None => "none",
         })
     }
+
+    fn left_column_entries(&self) -> Vec<String> {
+        vec![
+            format!(
+                "• Branch: {}",
+                self.git_summary
+                    .branch
+                    .as_deref()
+                    .unwrap_or("not a git repo")
+            ),
+            format!(
+                "• Head: {}",
+                self.git_summary.head.as_deref().unwrap_or("n/a")
+            ),
+            format!(
+                "• Uncommitted changes: {}",
+                match self.git_summary.uncommitted {
+                    Some(0) => "clean".to_string(),
+                    Some(count) => format!("{count} files"),
+                    None => "unknown".to_string(),
+                }
+            ),
+            format!("• Approvals preset: {}", self.approval_policy),
+            format!(
+                "• Sandbox mode: {}",
+                summarize_sandbox_policy_label(&self.sandbox_policy)
+            ),
+        ]
+    }
+
+    fn right_column_entries(&self) -> Vec<String> {
+        vec![
+            format!("• Indexing: {}", self.indexing_summary()),
+            format!("• Checkpoints: {}", self.checkpoint_summary()),
+            format!("• MCP servers: {}", self.mcp_summary()),
+            format!("• Writable roots: {}", self.writable_roots_summary()),
+        ]
+    }
+
+    fn indexing_summary(&self) -> String {
+        match self.semantic_status {
+            SemanticStatus::Missing => "sgrep missing — install to enable indexing".to_string(),
+            SemanticStatus::Indexing => self
+                .semantic_message
+                .as_deref()
+                .map(|msg| format!("indexing ({msg})"))
+                .unwrap_or_else(|| "indexing…".to_string()),
+            SemanticStatus::Ready => self
+                .semantic_message
+                .as_deref()
+                .map(|msg| format!("ready ({msg})"))
+                .unwrap_or_else(|| "ready (auto-watch active)".to_string()),
+        }
+    }
+
+    fn checkpoint_summary(&self) -> String {
+        if self.checkpoint_names.is_empty() {
+            "none yet (use /checkpoint)".to_string()
+        } else {
+            self.checkpoint_names.join(", ")
+        }
+    }
+
+    fn mcp_summary(&self) -> String {
+        if self.mcp_servers.is_empty() {
+            "none configured".to_string()
+        } else {
+            self.mcp_servers.join(", ")
+        }
+    }
+
+    fn writable_roots_summary(&self) -> String {
+        if self.writable_roots.is_empty() {
+            return "workspace root only".to_string();
+        }
+        let mut formatted: Vec<String> = self
+            .writable_roots
+            .iter()
+            .map(|path| Self::format_directory_inner(path, Some(24)))
+            .collect();
+        if formatted.len() > 3 {
+            let extra = formatted.len() - 3;
+            formatted.truncate(3);
+            formatted.push(format!("+{extra} more"));
+        }
+        formatted.join(", ")
+    }
+
+    fn render_columns(&self, inner_width: usize) -> Vec<Line<'static>> {
+        const GAP: usize = 4;
+        if inner_width <= GAP * 2 {
+            let mut merged = self.left_column_entries();
+            merged.push(String::new());
+            merged.extend(self.right_column_entries());
+            return wrap_entries(&merged, inner_width, true)
+                .into_iter()
+                .map(Line::from)
+                .collect();
+        }
+
+        let col_width = (inner_width.saturating_sub(GAP)) / 2;
+        let left_entries = self.left_column_entries();
+        let right_entries = self.right_column_entries();
+        let left_lines = wrap_entries(&left_entries, col_width, false);
+        let right_lines = wrap_entries(&right_entries, col_width, false);
+        combine_columns(left_lines, right_lines, col_width, GAP)
+    }
 }
 
 impl HistoryCell for SessionHeaderHistoryCell {
     fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
-        let Some(inner_width) = card_inner_width(width, SESSION_HEADER_MAX_INNER_WIDTH) else {
+        let dynamic_max = width.saturating_sub(4) as usize;
+        let Some(inner_width) = card_inner_width(width, dynamic_max) else {
             return Vec::new();
         };
 
         let make_row = |spans: Vec<Span<'static>>| Line::from(spans);
 
-        // Title line rendered inside the box: ">_ Codex Kaioken (vX)"
         let title_spans: Vec<Span<'static>> = vec![
             Span::from(">_ ").dim(),
             Span::from("Codex Kaioken").bold(),
-            Span::from(" ").dim(),
-            Span::from(format!("(v{})", self.version)).dim(),
+            Span::from("  ·  ").dim(),
+            Span::from(format!("v{}", self.version)).dim(),
         ];
 
         const CHANGE_MODEL_HINT_COMMAND: &str = "/model";
         const CHANGE_MODEL_HINT_EXPLANATION: &str = " to change";
-        const DIR_LABEL: &str = "directory:";
-        let label_width = DIR_LABEL.len();
-        let model_label = format!(
-            "{model_label:<label_width$}",
-            model_label = "model:",
-            label_width = label_width
-        );
-        let reasoning_label = self.reasoning_label();
-        let mut model_spans: Vec<Span<'static>> = vec![
-            Span::from(format!("{model_label} ")).dim(),
-            Span::from(self.model.clone()),
-        ];
-        if let Some(reasoning) = reasoning_label {
+        let mut model_spans: Vec<Span<'static>> =
+            vec![Span::from("model: ").dim(), Span::from(self.model.clone())];
+        if let Some(reasoning) = self.reasoning_label() {
             model_spans.push(Span::from(" "));
             model_spans.push(Span::from(reasoning));
         }
@@ -756,21 +884,125 @@ impl HistoryCell for SessionHeaderHistoryCell {
         model_spans.push(CHANGE_MODEL_HINT_COMMAND.cyan());
         model_spans.push(CHANGE_MODEL_HINT_EXPLANATION.dim());
 
-        let dir_label = format!("{DIR_LABEL:<label_width$}");
+        let dir_label = "directory:";
         let dir_prefix = format!("{dir_label} ");
         let dir_prefix_width = UnicodeWidthStr::width(dir_prefix.as_str());
         let dir_max_width = inner_width.saturating_sub(dir_prefix_width);
         let dir = self.format_directory(Some(dir_max_width));
         let dir_spans = vec![Span::from(dir_prefix).dim(), Span::from(dir)];
 
-        let lines = vec![
+        let mut lines = vec![
             make_row(title_spans),
             make_row(Vec::new()),
             make_row(model_spans),
             make_row(dir_spans),
+            make_row(Vec::new()),
         ];
+        lines.extend(self.render_columns(inner_width));
 
         with_border(lines)
+    }
+}
+
+impl GitSummary {
+    fn collect(directory: &Path) -> Self {
+        Self {
+            branch: git_output(directory, &["rev-parse", "--abbrev-ref", "HEAD"])
+                .and_then(|s| (!s.is_empty() && s != "HEAD").then_some(s)),
+            head: git_output(directory, &["rev-parse", "--short", "HEAD"]),
+            uncommitted: git_status_count(directory),
+        }
+    }
+}
+
+fn git_output(directory: &Path, args: &[&str]) -> Option<String> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(directory)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(output.stdout).ok()?;
+    let trimmed = text.trim().to_string();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
+}
+
+fn git_status_count(directory: &Path) -> Option<usize> {
+    let output = Command::new("git")
+        .args(["status", "--porcelain"])
+        .current_dir(directory)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(output.stdout).ok()?;
+    if text.is_empty() {
+        Some(0)
+    } else {
+        Some(text.lines().count())
+    }
+}
+
+fn wrap_entries(entries: &[String], width: usize, include_spacing: bool) -> Vec<String> {
+    if width == 0 {
+        return Vec::new();
+    }
+    let mut lines = Vec::new();
+    for (idx, entry) in entries.iter().enumerate() {
+        let options = Options::new(width)
+            .subsequent_indent("  ")
+            .break_words(false);
+        let wrapped = textwrap::wrap(entry.as_str(), options);
+        for segment in wrapped {
+            lines.push(segment.to_string());
+        }
+        if include_spacing && idx + 1 < entries.len() {
+            lines.push(String::new());
+        }
+    }
+    lines
+}
+
+fn combine_columns(
+    left: Vec<String>,
+    right: Vec<String>,
+    col_width: usize,
+    gap: usize,
+) -> Vec<Line<'static>> {
+    let rows = left.len().max(right.len());
+    let gap_str = " ".repeat(gap);
+    let mut lines = Vec::new();
+    for idx in 0..rows {
+        let left_text = left.get(idx).map(std::string::String::as_str).unwrap_or("");
+        let right_text = right
+            .get(idx)
+            .map(std::string::String::as_str)
+            .unwrap_or("");
+        let left_width = UnicodeWidthStr::width(left_text);
+        let mut spans = Vec::new();
+        spans.push(Span::from(left_text.to_string()));
+        if col_width > left_width {
+            spans.push(Span::from(" ".repeat(col_width - left_width)));
+        }
+        spans.push(Span::from(gap_str.clone()));
+        spans.push(Span::from(right_text.to_string()));
+        lines.push(Line::from(spans));
+    }
+    lines
+}
+
+fn summarize_sandbox_policy_label(policy: &SandboxPolicy) -> &'static str {
+    match policy {
+        SandboxPolicy::DangerFullAccess => "danger-full-access",
+        SandboxPolicy::ReadOnly => "read-only",
+        SandboxPolicy::WorkspaceWrite { .. } => "workspace-write",
     }
 }
 
@@ -2041,10 +2273,20 @@ mod tests {
 
     #[test]
     fn session_header_includes_reasoning_level_when_present() {
+        let snapshot = WelcomeSnapshot {
+            semantic_status: SemanticStatus::Ready,
+            semantic_message: None,
+            checkpoint_names: Vec::new(),
+        };
         let cell = SessionHeaderHistoryCell::new(
             "gpt-4o".to_string(),
             Some(ReasoningEffortConfig::High),
             std::env::temp_dir(),
+            AskForApproval::Never,
+            SandboxPolicy::ReadOnly,
+            Vec::new(),
+            Vec::new(),
+            snapshot,
             "test",
         );
 

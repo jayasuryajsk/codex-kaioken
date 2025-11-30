@@ -81,6 +81,14 @@ When the chat composer is empty, press Esc to prime “backtrack” mode. Press 
 
 In the transcript preview, the footer shows an `Esc edit prev` hint while editing is active.
 
+#### `/checkpoint`, `/restore`, `/checkpoints`
+
+When you want a manual save point outside of git, run `/checkpoint <name>` in the composer. Codex captures a ghost snapshot immediately so you can experiment freely. Use `/restore <name>` to jump back to that snapshot, and `/checkpoints` to see every save point created during the session.
+
+#### `/settings` for UI toggles
+
+Run `/settings` to open a lightweight settings panel in the TUI. You can toggle Kaioken-specific preferences—starting with whether rate limit usage appears in the footer—and the choices persist in your config. More switches will land here over time so the welcome card stays clean while power users keep full control.
+
 #### `--cd`/`-C` flag
 
 Sometimes it is not convenient to `cd` to the directory you want Codex to use as the "working root" before running Codex. Fortunately, `codex` supports a `--cd` option so you can specify whatever folder you want. You can confirm that Codex is honoring `--cd` by double-checking the **workdir** it reports in the TUI at the start of a new session.
