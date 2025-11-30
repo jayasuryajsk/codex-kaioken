@@ -2,6 +2,16 @@
 
 Fork branding: this distribution ships as `codex-kaioken` only. Install it to a path that won't shadow upstream `codex` (e.g., a separate prefix or a dedicated `bin` directory on your PATH).
 
+### Highlights
+
+- **Plan-first workflow** – toggle `/plan` (or press <kbd>Shift</kbd>+<kbd>Tab</kbd>) to force Codex to propose a checklist before it touches your repo. The composer turns cyan so you know the next prompt will draft a plan, and `/settings` lets you choose coarse, detailed, or auto plan granularity.
+- **Session settings palette** – `/settings` exposes Kaioken-only switches for plan detail, rate-limit footer visibility, and subagent concurrency (1–8 helpers) without hand-editing `config.toml`.
+- **Real-time subagent UI** – helper agents stream their tool calls, diffs, and reasoning into dedicated panes so you can watch exploration tasks unfold turn by turn.
+- **Parallel orchestration** – the main session can spin up specialized subagents (explore, infra, tests, etc.) and merge their findings back into the primary transcript automatically.
+- **Semantic search tool** – when [`sgrep`](https://github.com/Rika-Labs/sgrep) is on `PATH`, Kaioken registers `semantic_search` for fast ranked code lookups.
+- **Snapshot-aware undo & checkpoints** – `/undo` rolls back the last ghost snapshot, and `/checkpoint save|list|restore` gives you named save points without touching git. The inline status indicator clears as soon as checkpoints finish so you aren’t stuck watching a phantom spinner.
+- **MCP + sandbox tooling** – everything from upstream Codex (execpolicy, MCP client/server, approvals, sandbox helpers) remains available, but defaults are tuned for Kaioken’s power workflows.
+
 ### Installing without colliding with upstream `codex`
 
 - Package names should differ from upstream (e.g., `codex-kaioken` for brew/npm); do not reuse the `codex` package name.
