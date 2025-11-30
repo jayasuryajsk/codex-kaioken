@@ -52,6 +52,18 @@ cp target/debug/codex ~/.codex-kaioken/bin/codex-kaioken
 
 Keep `~/.codex-kaioken/bin` ahead of any upstream `codex` install on your `PATH` so you always launch the Kaioken binary.
 
+### Install via npm (prebuilt binaries)
+
+Prefer a zero-build install? The published npm wrapper downloads the correct binary from the latest GitHub release and places it on your `PATH`.
+
+```bash
+npm install -g @jayasuryajsk/codex-kaioken
+codex-kaioken --version
+```
+
+The package version matches this repository (for example `0.1.2`) and automatically fetches the corresponding tarball (`codex-kaioken-<platform>.tar.gz`) that CI attached to the release.
+
+## Documentation
 Most docs live under [`codex-rs/docs/`](./codex-rs/docs):
 
 - [Getting started](./codex-rs/docs/getting-started.md) – walkthrough, slash commands, example prompts.
