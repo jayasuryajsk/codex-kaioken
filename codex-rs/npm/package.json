@@ -1,0 +1,23 @@
+{
+  "name": "@jayasuryajsk/codex-kaioken",
+  "version": "0.1.2",
+  "description": "CLI wrapper that downloads the Codex Kaioken binary",
+  "type": "module",
+  "bin": {
+    "codex-kaioken": "bin/main.js"
+  },
+  "scripts": {
+    "postinstall": "node bin/postinstall.js"
+  },
+  "author": "Codex Kaioken",
+  "license": "Apache-2.0",
+  "files": ["bin"],
+  "preferGlobal": true,
+  "os": ["darwin", "linux", "win32"],
+  "cpu": ["x64", "arm64"],
+  "keywords": ["codex", "kaioken", "cli"],
+  "dependencies": {
+    "node-fetch": "^3.3.2",
+    "tar": "^6.2.0"
+  }
+}
