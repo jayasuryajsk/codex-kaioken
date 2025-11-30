@@ -63,6 +63,7 @@ Most docs live under [`codex-rs/docs/`](./codex-rs/docs):
 ## Repository layout
 
 - [`codex-rs/`](./codex-rs) – Rust workspace with every crate (`codex-core`, `codex-tui`, `codex-cli`, etc.). See [`codex-rs/README.md`](./codex-rs/README.md) for deeper details.
+- [`npm/`](./codex-rs/npm) – npm wrapper that downloads the correct `codex-kaioken` binary during `postinstall`. Run `npm publish` from this directory after cutting a GitHub Release so `npm i -g codex-kaioken` can fetch the same artifacts.
 - `conductor.json` / `.conductor` – metadata used by the Codex CLI harness while developing Kaioken.
 - `.github/` – CI, issue templates, assets used in this README.
 
