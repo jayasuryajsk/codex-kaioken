@@ -1,0 +1,29 @@
+---
+source: tui/src/chatwidget/tests.rs
+assertion_line: 1639
+expression: popup
+---
+  Settings
+  Customize the Kaioken TUI experience.
+
+› 1. Show rate limit usage in footer (current)  Display session usage and
+                                                weekly quota alongside the
+                                                context indicator.
+  2. Hide rate limit usage in footer            Keep the footer minimal by
+                                                removing rate limit summaries.
+  3. Plan detail — auto (current)               Let Kaioken choose between
+                                                concise (3–4) or detailed (6–
+                                                10) steps based on scope.
+  4. Plan detail — coarse                       Always produce 3–4 high-level
+                                                steps for quick tasks.
+  5. Plan detail — detailed                     Always produce 6–10 steps with
+                                                file references, tests, and
+                                                follow-ups.
+  6. Subagent concurrency — 1 tasks             Serial mode — run one helper
+                                                at a time.
+  7. Subagent concurrency — 2 tasks             Light concurrency — 2 helpers
+                                                for smaller repos or laptops.
+  8. Subagent concurrency — 4 tasks (current)   Balanced concurrency — default
+                                                Kaioken throughput.
+
+  Press enter to confirm or esc to go back

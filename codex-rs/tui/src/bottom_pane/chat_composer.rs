@@ -8,11 +8,14 @@ use ratatui::layout::Constraint;
 use ratatui::layout::Layout;
 use ratatui::layout::Margin;
 use ratatui::layout::Rect;
+use ratatui::style::Color;
+use ratatui::style::Modifier;
 use ratatui::style::Style;
 use ratatui::style::Stylize;
 use ratatui::text::Line;
 use ratatui::text::Span;
 use ratatui::widgets::Block;
+use ratatui::widgets::Borders;
 use ratatui::widgets::StatefulWidgetRef;
 use ratatui::widgets::WidgetRef;
 
@@ -105,6 +108,7 @@ pub(crate) struct ChatComposer {
     has_focus: bool,
     attached_images: Vec<AttachedImage>,
     placeholder_text: String,
+    plan_mode_enabled: bool,
     is_task_running: bool,
     // Non-bracketed paste burst tracker.
     paste_burst: PasteBurst,
@@ -117,6 +121,7 @@ pub(crate) struct ChatComposer {
     semantic_status: SemanticStatus,
     semantic_spinner_frame: char,
     semantic_message: Option<String>,
+    rate_limit_summary: Option<String>,
 }
 
 /// Popup state – at most one can be visible at any time.
@@ -154,6 +159,7 @@ impl ChatComposer {
             has_focus: has_input_focus,
             attached_images: Vec::new(),
             placeholder_text,
+            plan_mode_enabled: false,
             is_task_running: false,
             paste_burst: PasteBurst::default(),
             disable_paste_burst: false,
@@ -164,10 +170,25 @@ impl ChatComposer {
             semantic_status: SemanticStatus::Ready,
             semantic_spinner_frame: DEFAULT_SEMANTIC_SPINNER,
             semantic_message: None,
+            rate_limit_summary: None,
         };
         // Apply configuration via the setter to keep side-effects centralized.
         this.set_disable_paste_burst(disable_paste_burst);
         this
+    }
+
+    pub(crate) fn set_placeholder_text(&mut self, text: String) {
+        if self.placeholder_text != text {
+            self.placeholder_text = text;
+        }
+    }
+
+    pub(crate) fn set_plan_mode_enabled(&mut self, enabled: bool) -> bool {
+        if self.plan_mode_enabled == enabled {
+            return false;
+        }
+        self.plan_mode_enabled = enabled;
+        true
     }
 
     fn layout_areas(&self, area: Rect) -> [Rect; 3] {
@@ -1398,6 +1419,7 @@ impl ChatComposer {
             semantic_status: self.semantic_status,
             semantic_spinner: self.semantic_spinner_frame,
             semantic_message: self.semantic_message.clone(),
+            rate_limit_summary: self.rate_limit_summary.clone(),
         }
     }
 
@@ -1551,6 +1573,14 @@ impl ChatComposer {
         }
     }
 
+    pub(crate) fn set_rate_limit_summary(&mut self, summary: Option<String>) -> bool {
+        if self.rate_limit_summary == summary {
+            return false;
+        }
+        self.rate_limit_summary = summary;
+        true
+    }
+
     pub(crate) fn set_esc_backtrack_hint(&mut self, show: bool) {
         self.esc_backtrack_hint = show;
         if show {
@@ -1635,7 +1665,14 @@ impl Renderable for ChatComposer {
             }
         }
         let style = user_message_style();
-        Block::default().style(style).render_ref(composer_rect, buf);
+        let mut block = Block::default().style(style);
+        if self.plan_mode_enabled {
+            let border_style = Style::default()
+                .fg(Color::LightCyan)
+                .add_modifier(Modifier::BOLD);
+            block = block.borders(Borders::ALL).border_style(border_style);
+        }
+        block.render_ref(composer_rect, buf);
         if !textarea_rect.is_empty() {
             buf.set_span(
                 textarea_rect.x - LIVE_PREFIX_COLS,
@@ -1763,6 +1800,35 @@ mod tests {
             spacing_row.trim(),
             "",
             "expected blank spacing row above hints but saw: {spacing_row:?}",
+        );
+    }
+
+    #[test]
+    fn plan_mode_highlights_composer_border() {
+        let (tx, _rx) = unbounded_channel::<AppEvent>();
+        let sender = AppEventSender::new(tx);
+        let mut composer = ChatComposer::new(
+            true,
+            sender,
+            false,
+            "Ask Codex to do anything".to_string(),
+            false,
+        );
+        assert!(composer.set_plan_mode_enabled(true));
+        let width = 60;
+        let area = Rect::new(0, 0, width, composer.desired_height(width));
+        let mut buf = Buffer::empty(area);
+        composer.render(area, &mut buf);
+        let top_left = buf[(0, 0)].clone();
+        assert_eq!(
+            top_left.symbol(),
+            "┌",
+            "plan mode should draw a border around the composer"
+        );
+        assert_eq!(
+            top_left.fg,
+            Color::LightCyan,
+            "plan mode border should use the cyan accent color"
         );
     }
 

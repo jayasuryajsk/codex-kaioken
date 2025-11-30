@@ -7,7 +7,10 @@ use crate::config::types::Notifications;
 use crate::config::types::OtelConfig;
 use crate::config::types::OtelConfigToml;
 use crate::config::types::OtelExporterKind;
+use crate::config::types::PlanDetailPreference;
 use crate::config::types::ReasoningSummaryFormat;
+use crate::config::types::SUBAGENT_LIMIT_HARD_CAP;
+use crate::config::types::SUBAGENT_LIMIT_MIN;
 use crate::config::types::SandboxWorkspaceWrite;
 use crate::config::types::ShellEnvironmentPolicy;
 use crate::config::types::ShellEnvironmentPolicyToml;
@@ -156,6 +159,9 @@ pub struct Config {
     /// TUI notifications preference. When set, the TUI will send OSC 9 notifications on approvals
     /// and turn completions when not focused.
     pub tui_notifications: Notifications,
+    pub show_rate_limits_in_footer: bool,
+    pub plan_detail: PlanDetailPreference,
+    pub subagent_max_tasks: i64,
 
     /// Enable ASCII animations and shimmer effects in the TUI.
     pub animations: bool,
@@ -1257,6 +1263,18 @@ impl Config {
                 .as_ref()
                 .map(|t| t.notifications.clone())
                 .unwrap_or_default(),
+            show_rate_limits_in_footer: cfg
+                .tui
+                .as_ref()
+                .map(|t| t.show_rate_limits_in_footer)
+                .unwrap_or(true),
+            plan_detail: cfg.tui.as_ref().map(|t| t.plan_detail).unwrap_or_default(),
+            subagent_max_tasks: cfg
+                .tui
+                .as_ref()
+                .map(|t| t.subagent_max_tasks)
+                .unwrap_or(4)
+                .clamp(SUBAGENT_LIMIT_MIN, SUBAGENT_LIMIT_HARD_CAP),
             animations: cfg.tui.as_ref().map(|t| t.animations).unwrap_or(true),
             otel: {
                 let t: OtelConfigToml = cfg.otel.unwrap_or_default();
@@ -3008,6 +3026,9 @@ model_verbosity = "high"
                 check_for_update_on_startup: true,
                 disable_paste_burst: false,
                 tui_notifications: Default::default(),
+                show_rate_limits_in_footer: true,
+                plan_detail: PlanDetailPreference::default(),
+                subagent_max_tasks: 4,
                 animations: true,
                 otel: OtelConfig::default(),
             },
@@ -3081,6 +3102,9 @@ model_verbosity = "high"
             check_for_update_on_startup: true,
             disable_paste_burst: false,
             tui_notifications: Default::default(),
+            show_rate_limits_in_footer: true,
+            plan_detail: PlanDetailPreference::default(),
+            subagent_max_tasks: 4,
             animations: true,
             otel: OtelConfig::default(),
         };
@@ -3169,6 +3193,9 @@ model_verbosity = "high"
             check_for_update_on_startup: true,
             disable_paste_burst: false,
             tui_notifications: Default::default(),
+            show_rate_limits_in_footer: true,
+            plan_detail: PlanDetailPreference::default(),
+            subagent_max_tasks: 4,
             animations: true,
             otel: OtelConfig::default(),
         };
@@ -3243,6 +3270,9 @@ model_verbosity = "high"
             check_for_update_on_startup: true,
             disable_paste_burst: false,
             tui_notifications: Default::default(),
+            show_rate_limits_in_footer: true,
+            plan_detail: PlanDetailPreference::default(),
+            subagent_max_tasks: 4,
             animations: true,
             otel: OtelConfig::default(),
         };

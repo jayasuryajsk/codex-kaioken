@@ -356,6 +356,20 @@ impl Default for Notifications {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanDetailPreference {
+    Auto,
+    Coarse,
+    Detailed,
+}
+
+impl Default for PlanDetailPreference {
+    fn default() -> Self {
+        PlanDetailPreference::Auto
+    }
+}
+
 /// Collection of settings that are specific to the TUI.
 #[derive(Deserialize, Debug, Clone, PartialEq, Default)]
 pub struct Tui {
@@ -368,10 +382,32 @@ pub struct Tui {
     /// Defaults to `true`.
     #[serde(default = "default_true")]
     pub animations: bool,
+
+    /// When `true`, show rate limit usage in the footer status line.
+    /// Defaults to `true`.
+    #[serde(default = "default_true")]
+    pub show_rate_limits_in_footer: bool,
+
+    /// Preferred plan detail level for plan-first workflows.
+    #[serde(default)]
+    pub plan_detail: PlanDetailPreference,
+
+    /// Maximum allowed concurrent subagent tasks.
+    #[serde(default = "default_subagent_limit")]
+    pub subagent_max_tasks: i64,
 }
 
 const fn default_true() -> bool {
     true
+}
+
+/// Hard minimum number of allowed concurrent subagent tasks.
+pub const SUBAGENT_LIMIT_MIN: i64 = 1;
+/// Hard maximum number of allowed concurrent subagent tasks.
+pub const SUBAGENT_LIMIT_HARD_CAP: i64 = 8;
+
+const fn default_subagent_limit() -> i64 {
+    4
 }
 
 /// Settings for notices we display to users via the tui and app-server clients
