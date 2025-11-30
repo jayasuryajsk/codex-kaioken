@@ -1,6 +1,9 @@
 use crate::config::CONFIG_TOML_FILE;
 use crate::config::types::McpServerConfig;
 use crate::config::types::Notice;
+use crate::config::types::PlanDetailPreference;
+use crate::config::types::SUBAGENT_LIMIT_HARD_CAP;
+use crate::config::types::SUBAGENT_LIMIT_MIN;
 use anyhow::Context;
 use codex_protocol::config_types::ReasoningEffort;
 use codex_protocol::config_types::TrustLevel;
@@ -551,6 +554,36 @@ impl ConfigEditsBuilder {
         self.edits.push(ConfigEdit::SetPath {
             segments: vec!["features".to_string(), key.to_string()],
             value: value(enabled),
+        });
+        self
+    }
+
+    pub fn set_tui_show_rate_limits_in_footer(mut self, show: bool) -> Self {
+        self.edits.push(ConfigEdit::SetPath {
+            segments: vec!["tui".to_string(), "show_rate_limits_in_footer".to_string()],
+            value: value(show),
+        });
+        self
+    }
+
+    pub fn set_tui_plan_detail(mut self, detail: PlanDetailPreference) -> Self {
+        let detail_str = match detail {
+            PlanDetailPreference::Auto => "auto",
+            PlanDetailPreference::Coarse => "coarse",
+            PlanDetailPreference::Detailed => "detailed",
+        };
+        self.edits.push(ConfigEdit::SetPath {
+            segments: vec!["tui".to_string(), "plan_detail".to_string()],
+            value: value(detail_str),
+        });
+        self
+    }
+
+    pub fn set_tui_subagent_max_tasks(mut self, limit: i64) -> Self {
+        let clamped = limit.clamp(SUBAGENT_LIMIT_MIN, SUBAGENT_LIMIT_HARD_CAP);
+        self.edits.push(ConfigEdit::SetPath {
+            segments: vec!["tui".to_string(), "subagent_max_tasks".to_string()],
+            value: value(clamped),
         });
         self
     }

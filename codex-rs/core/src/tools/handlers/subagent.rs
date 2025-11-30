@@ -11,10 +11,13 @@ use codex_protocol::user_input::UserInput;
 use futures::future::join_all;
 use serde::Deserialize;
 use tokio::time::timeout;
+use tracing::warn;
 
 use crate::codex::Codex;
 use crate::codex::CodexSpawnOk;
 use crate::config::Config;
+use crate::config::types::SUBAGENT_LIMIT_HARD_CAP;
+use crate::config::types::SUBAGENT_LIMIT_MIN;
 use crate::function_tool::FunctionCallError;
 use crate::protocol::AskForApproval;
 use crate::protocol::EventMsg;
@@ -52,7 +55,6 @@ struct SubagentResult {
 }
 
 const DEFAULT_CHILD_TIMEOUT: Option<Duration> = None;
-const MAX_TASKS: usize = 4;
 
 #[async_trait]
 impl ToolHandler for SubagentHandler {
@@ -86,11 +88,6 @@ impl ToolHandler for SubagentHandler {
                 "tasks must not be empty".to_string(),
             ));
         }
-        if args.tasks.len() > MAX_TASKS {
-            return Err(FunctionCallError::RespondToModel(format!(
-                "too many tasks (max {MAX_TASKS})"
-            )));
-        }
 
         let auth_manager = turn.client.get_auth_manager().ok_or_else(|| {
             FunctionCallError::RespondToModel("auth manager unavailable".to_string())
@@ -99,6 +96,12 @@ impl ToolHandler for SubagentHandler {
             .clone_original_config()
             .await
             .map_err(|err| FunctionCallError::RespondToModel(err.to_string()))?;
+        let task_limit = effective_subagent_limit(parent_config.subagent_max_tasks);
+        if args.tasks.len() > task_limit {
+            return Err(FunctionCallError::RespondToModel(format!(
+                "too many subagent tasks (limit {task_limit})"
+            )));
+        }
 
         let session_source = turn.client.get_session_source();
         let parent_cwd = turn.cwd.clone();
@@ -166,6 +169,19 @@ impl ToolHandler for SubagentHandler {
             success: Some(true),
         })
     }
+}
+
+fn effective_subagent_limit(raw_limit: i64) -> usize {
+    let clamped = raw_limit.clamp(SUBAGENT_LIMIT_MIN, SUBAGENT_LIMIT_HARD_CAP);
+    if raw_limit != clamped {
+        warn!(
+            configured = raw_limit,
+            applied = clamped,
+            hard_cap = SUBAGENT_LIMIT_HARD_CAP,
+            "subagent limit outside supported range; clamping"
+        );
+    }
+    clamped as usize
 }
 
 async fn run_subagent_task(

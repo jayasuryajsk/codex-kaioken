@@ -11,6 +11,7 @@ use crate::bottom_pane::ApprovalRequest;
 use crate::history_cell::HistoryCell;
 use crate::semantic::SemanticStatus;
 
+use codex_core::config::types::PlanDetailPreference;
 use codex_core::protocol::AskForApproval;
 use codex_core::protocol::SandboxPolicy;
 use codex_core::protocol_config_types::ReasoningEffort;
@@ -123,6 +124,16 @@ pub(crate) enum AppEvent {
     /// Update whether the rate limit switch prompt has been acknowledged for the session.
     UpdateRateLimitSwitchPromptHidden(bool),
 
+    /// Handle plan review commands triggered from the UI.
+    PlanReviewAction(PlanReviewAction),
+
+    /// Update whether rate limits should be shown in the footer.
+    UpdateShowRateLimitsInFooter(bool),
+    /// Update the preferred plan detail level.
+    UpdatePlanDetailPreference(PlanDetailPreference),
+    /// Update the maximum concurrent subagent tasks.
+    UpdateSubagentTaskLimit(i64),
+
     /// Persist the acknowledgement flag for the full access warning prompt.
     PersistFullAccessWarningAcknowledged,
 
@@ -132,6 +143,13 @@ pub(crate) enum AppEvent {
 
     /// Persist the acknowledgement flag for the rate limit switch prompt.
     PersistRateLimitSwitchPromptHidden,
+
+    /// Persist the footer rate limit visibility preference.
+    PersistShowRateLimitsInFooter(bool),
+    /// Persist the preferred plan detail level.
+    PersistPlanDetailPreference(PlanDetailPreference),
+    /// Persist the maximum concurrent subagent tasks.
+    PersistSubagentTaskLimit(i64),
 
     /// Persist the acknowledgement flag for the model migration prompt.
     PersistModelMigrationPromptAcknowledged {
@@ -170,6 +188,13 @@ pub(crate) enum AppEvent {
     OpenFeedbackConsent {
         category: FeedbackCategory,
     },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PlanReviewAction {
+    Execute,
+    Feedback,
+    Cancel,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

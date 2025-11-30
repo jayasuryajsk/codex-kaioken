@@ -12,6 +12,7 @@ use codex_core::CodexAuth;
 use codex_core::config::Config;
 use codex_core::config::ConfigOverrides;
 use codex_core::config::ConfigToml;
+use codex_core::config::types::PlanDetailPreference;
 use codex_core::protocol::AgentMessageDeltaEvent;
 use codex_core::protocol::AgentMessageEvent;
 use codex_core::protocol::AgentReasoningDeltaEvent;
@@ -384,6 +385,11 @@ fn make_chatwidget_manual() -> (
         last_rendered_width: std::cell::Cell::new(None),
         feedback: codex_feedback::CodexFeedback::new(),
         current_rollout_path: None,
+        recent_checkpoints: VecDeque::new(),
+        plan_mode_enabled: false,
+        plan_workflow: None,
+        plan_feedback_pending: false,
+        default_placeholder: "Ask Codex to do anything".to_string(),
     };
     (widget, rx, op_rx)
 }
@@ -1121,6 +1127,7 @@ fn checkpoint_command_submits_op() {
 
     chat.submit_user_message(UserMessage {
         text: "/checkpoint base".into(),
+        display_text: None,
         image_paths: Vec::new(),
     });
 
@@ -1136,6 +1143,7 @@ fn restore_checkpoint_command_submits_op() {
 
     chat.submit_user_message(UserMessage {
         text: "/restore base".into(),
+        display_text: None,
         image_paths: Vec::new(),
     });
 
@@ -1151,6 +1159,7 @@ fn list_checkpoints_command_submits_op() {
 
     chat.submit_user_message(UserMessage {
         text: "/checkpoints".into(),
+        display_text: None,
         image_paths: Vec::new(),
     });
 
@@ -1619,6 +1628,15 @@ fn model_selection_popup_snapshot() {
 
     let popup = render_bottom_popup(&chat, 80);
     assert_snapshot!("model_selection_popup", popup);
+}
+
+#[test]
+fn settings_popup_snapshot() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual();
+    chat.open_settings_popup();
+
+    let popup = render_bottom_popup(&chat, 80);
+    assert_snapshot!("settings_popup", popup);
 }
 
 #[test]
@@ -2733,6 +2751,144 @@ fn plan_update_renders_history_cell() {
     assert!(blob.contains("Explore codebase"));
     assert!(blob.contains("Implement feature"));
     assert!(blob.contains("Write tests"));
+}
+
+#[test]
+fn plan_mode_captures_initial_request() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual();
+    chat.set_plan_mode(true);
+    chat.queue_user_message(UserMessage {
+        text: "map the codebase".to_string(),
+        display_text: None,
+        image_paths: Vec::new(),
+    });
+    assert!(
+        chat.plan_workflow.is_some(),
+        "expected plan workflow to start"
+    );
+    let op = op_rx.try_recv().expect("queued user input");
+    match op {
+        Op::UserInput { items } => {
+            assert_eq!(items.len(), 1);
+        }
+        other => panic!("unexpected op: {other:?}"),
+    }
+}
+
+#[test]
+fn plan_request_wraps_prompt_but_history_shows_original() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual();
+    chat.config.plan_detail = PlanDetailPreference::Detailed;
+    chat.set_plan_mode(true);
+    chat.queue_user_message(UserMessage {
+        text: "map the codebase".to_string(),
+        display_text: None,
+        image_paths: Vec::new(),
+    });
+
+    let submission_text = loop {
+        match op_rx.try_recv().expect("plan submission") {
+            Op::UserInput { items } => {
+                let text = match &items[0] {
+                    UserInput::Text { text } => text.clone(),
+                    _ => continue,
+                };
+                break text;
+            }
+            Op::AddToHistory { .. } | Op::Interrupt => continue,
+            other => panic!("unexpected op while waiting for submission: {other:?}"),
+        }
+    };
+    assert!(
+        submission_text.contains("plan-first workflow"),
+        "expected injected instructions, got {submission_text:?}"
+    );
+    assert!(
+        submission_text.contains("map the codebase"),
+        "expected original request in submission"
+    );
+
+    let cells = drain_insert_history(&mut rx);
+    let prompt_entry = cells
+        .iter()
+        .find(|lines| lines_to_single_string(lines).contains("map the codebase"))
+        .expect("user prompt in history");
+    let rendered = lines_to_single_string(prompt_entry);
+    assert!(
+        !rendered.contains("plan-first workflow"),
+        "history should only show user input, got {rendered:?}"
+    );
+}
+
+#[test]
+fn plan_update_moves_workflow_to_review() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual();
+    chat.set_plan_mode(true);
+    chat.queue_user_message(UserMessage {
+        text: "add telemetry".to_string(),
+        display_text: None,
+        image_paths: Vec::new(),
+    });
+    let _ = op_rx.try_recv().expect("initial input");
+    let _ = op_rx.try_recv().expect("initial history entry");
+    let update = UpdatePlanArgs {
+        explanation: Some("Draft plan".into()),
+        plan: vec![],
+    };
+    chat.handle_codex_event(Event {
+        id: "sub-1".into(),
+        msg: EventMsg::PlanUpdate(update),
+    });
+    assert!(
+        chat.plan_review_pending(),
+        "plan workflow should await approval after plan update"
+    );
+}
+
+#[test]
+fn plan_execute_replays_request() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual();
+    chat.set_plan_mode(true);
+    chat.queue_user_message(UserMessage {
+        text: "ship it".to_string(),
+        display_text: None,
+        image_paths: Vec::new(),
+    });
+    let _ = op_rx.try_recv().expect("initial input sent");
+    let _ = op_rx.try_recv().expect("initial history entry");
+    chat.handle_codex_event(Event {
+        id: "sub-2".into(),
+        msg: EventMsg::PlanUpdate(UpdatePlanArgs {
+            explanation: None,
+            plan: vec![],
+        }),
+    });
+    chat.execute_plan_request();
+    let execution_op = loop {
+        let op = op_rx.try_recv().expect("execution op");
+        match op {
+            Op::UserInput { .. } => break op,
+            Op::AddToHistory { .. } | Op::Interrupt => continue,
+            other => panic!("unexpected op while waiting for execution: {other:?}"),
+        }
+    };
+    match execution_op {
+        Op::UserInput { items } => {
+            let text = match &items[0] {
+                UserInput::Text { text } => text,
+                _ => panic!("unexpected input {items:?}"),
+            };
+            assert!(
+                text.contains("Plan approved"),
+                "execution message should confirm approval"
+            );
+        }
+        other => panic!("unexpected op: {other:?}"),
+    }
+    assert!(
+        chat.plan_workflow.is_none(),
+        "plan workflow should clear after execution"
+    );
 }
 
 #[test]

@@ -1,5 +1,6 @@
 use crate::app_backtrack::BacktrackState;
 use crate::app_event::AppEvent;
+use crate::app_event::PlanReviewAction;
 use crate::app_event_sender::AppEventSender;
 use crate::bottom_pane::ApprovalRequest;
 use crate::chatwidget::ChatWidget;
@@ -27,6 +28,8 @@ use codex_core::AuthManager;
 use codex_core::ConversationManager;
 use codex_core::config::Config;
 use codex_core::config::edit::ConfigEditsBuilder;
+use codex_core::config::types::SUBAGENT_LIMIT_HARD_CAP;
+use codex_core::config::types::SUBAGENT_LIMIT_MIN;
 #[cfg(target_os = "windows")]
 use codex_core::features::Feature;
 use codex_core::model_family::find_family_for_model;
@@ -768,6 +771,30 @@ impl App {
             AppEvent::UpdateRateLimitSwitchPromptHidden(hidden) => {
                 self.chat_widget.set_rate_limit_switch_prompt_hidden(hidden);
             }
+            AppEvent::UpdateShowRateLimitsInFooter(show) => {
+                self.config.show_rate_limits_in_footer = show;
+                self.chat_widget.set_show_rate_limits_in_footer(show);
+            }
+            AppEvent::UpdatePlanDetailPreference(detail) => {
+                self.config.plan_detail = detail;
+                self.chat_widget.set_plan_detail(detail);
+            }
+            AppEvent::UpdateSubagentTaskLimit(limit) => {
+                let normalized = limit.clamp(SUBAGENT_LIMIT_MIN, SUBAGENT_LIMIT_HARD_CAP);
+                self.config.subagent_max_tasks = normalized;
+                self.chat_widget.set_subagent_task_limit(normalized);
+            }
+            AppEvent::PlanReviewAction(action) => match action {
+                PlanReviewAction::Execute => {
+                    self.chat_widget.execute_plan_request();
+                }
+                PlanReviewAction::Feedback => {
+                    self.chat_widget.prepare_plan_feedback();
+                }
+                PlanReviewAction::Cancel => {
+                    self.chat_widget.cancel_plan_workflow();
+                }
+            },
             AppEvent::PersistFullAccessWarningAcknowledged => {
                 if let Err(err) = ConfigEditsBuilder::new(&self.config.codex_home)
                     .set_hide_full_access_warning(true)
@@ -810,6 +837,49 @@ impl App {
                     );
                     self.chat_widget.add_error_message(format!(
                         "Failed to save rate limit reminder preference: {err}"
+                    ));
+                }
+            }
+            AppEvent::PersistShowRateLimitsInFooter(show) => {
+                if let Err(err) = ConfigEditsBuilder::new(&self.config.codex_home)
+                    .set_tui_show_rate_limits_in_footer(show)
+                    .apply()
+                    .await
+                {
+                    tracing::error!(
+                        error = %err,
+                        "failed to persist footer rate limit visibility preference"
+                    );
+                    self.chat_widget
+                        .add_error_message(format!("Failed to save footer settings: {err}"));
+                }
+            }
+            AppEvent::PersistPlanDetailPreference(detail) => {
+                if let Err(err) = ConfigEditsBuilder::new(&self.config.codex_home)
+                    .set_tui_plan_detail(detail)
+                    .apply()
+                    .await
+                {
+                    tracing::error!(
+                        error = %err,
+                        "failed to persist plan detail preference"
+                    );
+                    self.chat_widget
+                        .add_error_message(format!("Failed to save plan detail preference: {err}"));
+                }
+            }
+            AppEvent::PersistSubagentTaskLimit(limit) => {
+                if let Err(err) = ConfigEditsBuilder::new(&self.config.codex_home)
+                    .set_tui_subagent_max_tasks(limit)
+                    .apply()
+                    .await
+                {
+                    tracing::error!(
+                        error = %err,
+                        "failed to persist subagent concurrency preference"
+                    );
+                    self.chat_widget.add_error_message(format!(
+                        "Failed to save subagent concurrency preference: {err}"
                     ));
                 }
             }
@@ -1018,7 +1088,9 @@ mod tests {
     use crate::history_cell::AgentMessageCell;
     use crate::history_cell::HistoryCell;
     use crate::history_cell::UserHistoryCell;
+    use crate::history_cell::WelcomeSnapshot;
     use crate::history_cell::new_session_info;
+    use crate::semantic::SemanticStatus;
     use codex_core::AuthManager;
     use codex_core::CodexAuth;
     use codex_core::ConversationManager;
@@ -1191,8 +1263,14 @@ mod tests {
                 initial_messages: None,
                 rollout_path: PathBuf::new(),
             };
+            let snapshot = WelcomeSnapshot {
+                semantic_status: SemanticStatus::Ready,
+                semantic_message: None,
+                checkpoint_names: Vec::new(),
+            };
             Arc::new(new_session_info(
                 app.chat_widget.config_ref(),
+                snapshot,
                 event,
                 is_first,
             )) as Arc<dyn HistoryCell>

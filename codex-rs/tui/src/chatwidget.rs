@@ -9,6 +9,9 @@ use codex_app_server_protocol::AuthMode;
 use codex_backend_client::Client as BackendClient;
 use codex_core::config::Config;
 use codex_core::config::types::Notifications;
+use codex_core::config::types::PlanDetailPreference;
+use codex_core::config::types::SUBAGENT_LIMIT_HARD_CAP;
+use codex_core::config::types::SUBAGENT_LIMIT_MIN;
 use codex_core::git_info::current_branch_name;
 use codex_core::git_info::local_git_branches;
 use codex_core::project_doc::DEFAULT_PROJECT_DOC_FILENAME;
@@ -90,6 +93,7 @@ use crate::bottom_pane::BottomPane;
 use crate::bottom_pane::BottomPaneParams;
 use crate::bottom_pane::CancellationEvent;
 use crate::bottom_pane::InputResult;
+use crate::bottom_pane::PlanReviewView;
 use crate::bottom_pane::SelectionAction;
 use crate::bottom_pane::SelectionItem;
 use crate::bottom_pane::SelectionViewParams;
@@ -108,6 +112,7 @@ use crate::history_cell::HistoryCell;
 use crate::history_cell::McpToolCallCell;
 use crate::history_cell::PlainHistoryCell;
 use crate::history_cell::SubagentTasksCell;
+use crate::history_cell::WelcomeSnapshot;
 use crate::markdown::append_markdown;
 use crate::render::Insets;
 use crate::render::line_utils::prefix_lines;
@@ -155,6 +160,8 @@ use tokio::process::Command;
 
 const USER_SHELL_COMMAND_HELP_TITLE: &str = "Prefix a command with ! to run it locally";
 const USER_SHELL_COMMAND_HELP_HINT: &str = "Example: !ls";
+const PLAN_MODE_PLACEHOLDER: &str = "Plan mode enabled — describe the goal";
+const PLAN_FEEDBACK_PLACEHOLDER: &str = "Describe plan adjustments and press Enter";
 // Track information about an in-flight exec command.
 struct RunningCommand {
     command: Vec<String>,
@@ -241,6 +248,44 @@ impl RateLimitWarningState {
 
         warnings
     }
+}
+
+#[derive(Clone)]
+struct PlanWorkflow {
+    request: UserMessage,
+    status: PlanWorkflowStatus,
+    last_plan: Option<UpdatePlanArgs>,
+    extra_feedback: Vec<String>,
+}
+
+impl PlanWorkflow {
+    fn new(request: UserMessage) -> Self {
+        Self {
+            request,
+            status: PlanWorkflowStatus::AwaitingPlan,
+            last_plan: None,
+            extra_feedback: Vec::new(),
+        }
+    }
+
+    fn awaiting_approval(&self) -> bool {
+        matches!(self.status, PlanWorkflowStatus::AwaitingApproval)
+    }
+
+    fn request_preview(&self) -> Option<String> {
+        self.request
+            .visible_text()
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .map(|line| truncate_text(line, 80))
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PlanWorkflowStatus {
+    AwaitingPlan,
+    AwaitingApproval,
 }
 
 pub(crate) fn get_limits_duration(windows_minutes: i64) -> String {
@@ -335,16 +380,27 @@ pub(crate) struct ChatWidget {
     pre_review_token_info: Option<Option<TokenUsageInfo>>,
     // Whether to add a final message separator after the last message
     needs_final_message_separator: bool,
+    // Whether plan-first workflow is enabled.
+    plan_mode_enabled: bool,
+    // Pending workflow data when plan mode captures a task.
+    plan_workflow: Option<PlanWorkflow>,
+    // Tracks whether the next submission should be treated as plan feedback.
+    plan_feedback_pending: bool,
+    // Placeholder shown when plan mode is off.
+    default_placeholder: String,
 
     last_rendered_width: std::cell::Cell<Option<usize>>,
     // Feedback sink for /feedback
     feedback: codex_feedback::CodexFeedback,
     // Current session rollout path (if known)
     current_rollout_path: Option<PathBuf>,
+    recent_checkpoints: VecDeque<String>,
 }
 
+#[derive(Clone)]
 struct UserMessage {
     text: String,
+    display_text: Option<String>,
     image_paths: Vec<PathBuf>,
 }
 
@@ -352,6 +408,7 @@ impl From<String> for UserMessage {
     fn from(text: String) -> Self {
         Self {
             text,
+            display_text: None,
             image_paths: Vec::new(),
         }
     }
@@ -361,8 +418,15 @@ impl From<&str> for UserMessage {
     fn from(text: &str) -> Self {
         Self {
             text: text.to_string(),
+            display_text: None,
             image_paths: Vec::new(),
         }
+    }
+}
+
+impl UserMessage {
+    fn visible_text(&self) -> &str {
+        self.display_text.as_deref().unwrap_or(&self.text)
     }
 }
 
@@ -378,7 +442,7 @@ impl LocalCommand {
             let rest = text.strip_prefix(command)?;
             if rest.is_empty() {
                 Some(rest)
-            } else if rest.chars().next().map_or(false, char::is_whitespace) {
+            } else if rest.chars().next().is_some_and(char::is_whitespace) {
                 Some(rest.trim_start())
             } else {
                 None
@@ -406,15 +470,54 @@ impl LocalCommand {
     }
 }
 
+const RECENT_CHECKPOINT_LIMIT: usize = 3;
+
 fn create_initial_user_message(text: String, image_paths: Vec<PathBuf>) -> Option<UserMessage> {
     if text.is_empty() && image_paths.is_empty() {
         None
     } else {
-        Some(UserMessage { text, image_paths })
+        Some(UserMessage {
+            text,
+            display_text: None,
+            image_paths,
+        })
     }
 }
 
 impl ChatWidget {
+    fn welcome_snapshot(&self) -> WelcomeSnapshot {
+        let (semantic_status, semantic_message) = self.bottom_pane.semantic_status_snapshot();
+        WelcomeSnapshot {
+            semantic_status,
+            semantic_message,
+            checkpoint_names: self.recent_checkpoints.iter().cloned().collect(),
+        }
+    }
+
+    fn push_recent_checkpoint(&mut self, name: &str) {
+        if name.trim().is_empty() {
+            return;
+        }
+        if let Some(pos) = self
+            .recent_checkpoints
+            .iter()
+            .position(|existing| existing == name)
+        {
+            self.recent_checkpoints.remove(pos);
+        }
+        self.recent_checkpoints.push_front(name.to_string());
+        while self.recent_checkpoints.len() > RECENT_CHECKPOINT_LIMIT {
+            self.recent_checkpoints.pop_back();
+        }
+    }
+
+    fn replace_recent_checkpoints(&mut self, entries: &[CheckpointEntry]) {
+        self.recent_checkpoints.clear();
+        for entry in entries.iter().take(RECENT_CHECKPOINT_LIMIT) {
+            self.recent_checkpoints.push_back(entry.name.clone());
+        }
+    }
+
     fn flush_answer_stream_with_separator(&mut self) {
         if let Some(mut controller) = self.stream_controller.take()
             && let Some(cell) = controller.finalize()
@@ -437,8 +540,10 @@ impl ChatWidget {
         let initial_messages = event.initial_messages.clone();
         let model_for_header = event.model.clone();
         self.session_header.set_model(&model_for_header);
+        let welcome_snapshot = self.welcome_snapshot();
         self.add_to_history(history_cell::new_session_info(
             &self.config,
+            welcome_snapshot,
             event,
             self.show_welcome_banner,
         ));
@@ -662,7 +767,20 @@ impl ChatWidget {
         } else {
             self.rate_limit_snapshot = None;
         }
+        self.refresh_rate_limit_footer_summary();
     }
+    fn refresh_rate_limit_footer_summary(&mut self) {
+        if self.config.show_rate_limits_in_footer {
+            let summary = self
+                .rate_limit_snapshot
+                .as_ref()
+                .and_then(rate_limit_footer_summary);
+            self.bottom_pane.set_rate_limit_summary(summary);
+        } else {
+            self.bottom_pane.set_rate_limit_summary(None);
+        }
+    }
+
     /// Finalize any active exec as failed and stop/clear running UI state.
     fn finalize_turn(&mut self) {
         // Ensure any spinner is replaced by a red ✗ and flushed into history.
@@ -797,6 +915,20 @@ impl ChatWidget {
     }
 
     fn on_plan_update(&mut self, update: UpdatePlanArgs) {
+        if let Some(workflow) = self.plan_workflow.as_mut() {
+            workflow.last_plan = Some(update.clone());
+            if matches!(workflow.status, PlanWorkflowStatus::AwaitingPlan) {
+                workflow.status = PlanWorkflowStatus::AwaitingApproval;
+                self.submit_op(Op::Interrupt);
+                self.open_plan_review_popup();
+                self.add_info_message(
+                    "Plan ready — review it before Codex proceeds.".to_string(),
+                    None,
+                );
+            } else if workflow.awaiting_approval() {
+                self.open_plan_review_popup();
+            }
+        }
         self.add_to_history(history_cell::new_plan_update(update));
     }
 
@@ -1066,6 +1198,7 @@ impl ChatWidget {
             format!("Checkpoint `{}` saved.", event.checkpoint.name),
             hint,
         );
+        self.push_recent_checkpoint(&event.checkpoint.name);
     }
 
     fn on_checkpoint_restored(&mut self, event: CheckpointRestoredEvent) {
@@ -1075,11 +1208,13 @@ impl ChatWidget {
             format!("Restored checkpoint `{}`.", event.checkpoint.name),
             hint,
         );
+        self.push_recent_checkpoint(&event.checkpoint.name);
     }
 
     fn on_checkpoint_list(&mut self, event: CheckpointListEvent) {
         self.clear_status_indicator();
         self.add_to_history(history_cell::new_checkpoint_list(&event.checkpoints));
+        self.replace_recent_checkpoints(&event.checkpoints);
     }
 
     fn on_checkpoint_error(&mut self, event: CheckpointErrorEvent) {
@@ -1419,6 +1554,7 @@ impl ChatWidget {
         } = common;
         let mut rng = rand::rng();
         let placeholder = EXAMPLE_PROMPTS[rng.random_range(0..EXAMPLE_PROMPTS.len())].to_string();
+        let default_placeholder = placeholder.clone();
         let codex_op_tx = spawn_agent(config.clone(), app_event_tx.clone(), conversation_manager);
 
         let mut widget = Self {
@@ -1471,6 +1607,11 @@ impl ChatWidget {
             last_rendered_width: std::cell::Cell::new(None),
             feedback,
             current_rollout_path: None,
+            recent_checkpoints: VecDeque::new(),
+            plan_mode_enabled: false,
+            plan_workflow: None,
+            plan_feedback_pending: false,
+            default_placeholder,
         };
 
         widget.prefetch_rate_limits();
@@ -1497,6 +1638,7 @@ impl ChatWidget {
         } = common;
         let mut rng = rand::rng();
         let placeholder = EXAMPLE_PROMPTS[rng.random_range(0..EXAMPLE_PROMPTS.len())].to_string();
+        let default_placeholder = placeholder.clone();
 
         let codex_op_tx =
             spawn_agent_from_existing(conversation, session_configured, app_event_tx.clone());
@@ -1551,6 +1693,11 @@ impl ChatWidget {
             last_rendered_width: std::cell::Cell::new(None),
             feedback,
             current_rollout_path: None,
+            recent_checkpoints: VecDeque::new(),
+            plan_mode_enabled: false,
+            plan_workflow: None,
+            plan_feedback_pending: false,
+            default_placeholder,
         };
 
         widget.prefetch_rate_limits();
@@ -1614,12 +1761,20 @@ impl ChatWidget {
                     self.request_redraw();
                 }
             }
+            KeyEvent {
+                code: KeyCode::BackTab,
+                kind: KeyEventKind::Press,
+                ..
+            } => {
+                self.toggle_plan_mode();
+            }
             _ => {
                 match self.bottom_pane.handle_key_event(key_event) {
                     InputResult::Submitted(text) => {
                         // If a task is running, queue the user input to be sent after the turn completes.
                         let user_message = UserMessage {
                             text,
+                            display_text: None,
                             image_paths: self.bottom_pane.take_recent_submission_images(),
                         };
                         self.queue_user_message(user_message);
@@ -1666,6 +1821,9 @@ impl ChatWidget {
                 self.bottom_pane.show_selection_view(params);
                 self.request_redraw();
             }
+            SlashCommand::Plan => {
+                self.on_plan_command();
+            }
             SlashCommand::New => {
                 self.app_event_tx.send(AppEvent::NewSession);
             }
@@ -1693,6 +1851,9 @@ impl ChatWidget {
             }
             SlashCommand::Approvals => {
                 self.open_approvals_popup();
+            }
+            SlashCommand::Settings => {
+                self.open_settings_popup();
             }
             SlashCommand::Quit | SlashCommand::Exit => {
                 self.request_exit();
@@ -1798,6 +1959,233 @@ impl ChatWidget {
         }
     }
 
+    fn on_plan_command(&mut self) {
+        if let Some(workflow) = self.plan_workflow.as_ref()
+            && workflow.awaiting_approval()
+        {
+            self.open_plan_review_popup();
+        } else {
+            let enable = !self.plan_mode_enabled;
+            self.set_plan_mode(enable);
+        }
+    }
+
+    fn toggle_plan_mode(&mut self) {
+        let enable = !self.plan_mode_enabled;
+        self.set_plan_mode(enable);
+    }
+
+    fn set_plan_mode(&mut self, enabled: bool) {
+        if self.plan_mode_enabled == enabled {
+            if enabled && self.plan_review_pending() {
+                self.open_plan_review_popup();
+            }
+            return;
+        }
+
+        self.plan_mode_enabled = enabled;
+        self.bottom_pane.set_plan_mode_enabled(enabled);
+        if enabled {
+            self.bottom_pane
+                .set_placeholder_text(PLAN_MODE_PLACEHOLDER.to_string());
+        } else {
+            self.bottom_pane
+                .set_placeholder_text(self.default_placeholder.clone());
+            self.cancel_plan_workflow();
+        }
+    }
+
+    fn handle_plan_submission(&mut self, user_message: UserMessage) -> bool {
+        if self.plan_feedback_pending {
+            self.handle_plan_feedback_submission(user_message);
+            return true;
+        }
+        if !self.plan_mode_enabled {
+            return false;
+        }
+        if self.plan_workflow.is_none() {
+            self.start_plan_request(user_message);
+            return true;
+        }
+        if self.plan_review_pending() {
+            self.add_info_message(
+                "Review or cancel the current plan before starting another request.".to_string(),
+                None,
+            );
+            return true;
+        }
+        self.add_info_message(
+            "Codex is still drafting your plan. Wait for the plan to finish or disable plan mode."
+                .to_string(),
+            None,
+        );
+        true
+    }
+
+    fn plan_review_pending(&self) -> bool {
+        self.plan_workflow
+            .as_ref()
+            .is_some_and(PlanWorkflow::awaiting_approval)
+    }
+
+    fn start_plan_request(&mut self, user_message: UserMessage) {
+        let original_request = user_message.clone();
+        let submission = self.decorate_plan_submission(user_message);
+        self.plan_workflow = Some(PlanWorkflow::new(original_request));
+        self.plan_feedback_pending = false;
+        self.bottom_pane
+            .set_placeholder_text(PLAN_MODE_PLACEHOLDER.to_string());
+        self.submit_user_message(submission);
+        self.add_info_message(
+            "Drafting a plan… Codex will wait for approval before making changes.".to_string(),
+            None,
+        );
+    }
+
+    fn decorate_plan_submission(&self, mut user_message: UserMessage) -> UserMessage {
+        let original = user_message.visible_text().to_string();
+        let mut submission = String::new();
+        submission.push_str(&self.plan_prompt_instructions());
+        submission.push_str("\n\nGoal:\n");
+        if original.trim().is_empty() {
+            submission.push_str("(no detailed goal provided)\n");
+        } else {
+            submission.push_str(original.trim());
+            submission.push('\n');
+        }
+        user_message.text = submission;
+        user_message.display_text = Some(original);
+        user_message
+    }
+
+    fn plan_prompt_instructions(&self) -> String {
+        let mut parts = vec![
+            "You are operating in Kaioken's plan-first workflow. Your next response must use the `update_plan` tool only.",
+        ];
+        match self.config.plan_detail {
+            PlanDetailPreference::Auto => parts.push(
+                "Decide on the level of detail: keep the plan to roughly 3–4 steps for a narrow change, or expand to 6–10 focused steps when the request spans multiple files or systems.",
+            ),
+            PlanDetailPreference::Coarse => parts.push(
+                "Produce a concise, high-level plan of roughly 3–4 major steps that highlight the main actions.",
+            ),
+            PlanDetailPreference::Detailed => parts.push(
+                "Produce a detailed plan of roughly 6–10 steps that cover implementation, validation, and follow-up tasks.",
+            ),
+        }
+        parts.push(
+            "Each step must mention the relevant files/modules or commands plus how you will verify the change (tests, linters, manual QA). Start every step with status `pending` unless progress is already made.",
+        );
+        parts.join(" ")
+    }
+
+    fn open_plan_review_popup(&mut self) {
+        if let Some(workflow) = self.plan_workflow.clone()
+            && let Some(plan) = workflow.last_plan.clone()
+        {
+            let goal = workflow.request_preview();
+            let feedback = workflow.extra_feedback;
+            let view = PlanReviewView::new(self.app_event_tx.clone(), goal, feedback, plan);
+            self.bottom_pane.show_view(Box::new(view));
+            self.request_redraw();
+        }
+    }
+
+    pub(crate) fn execute_plan_request(&mut self) {
+        let Some(workflow) = self.plan_workflow.take() else {
+            self.add_info_message("No pending plan to execute.".to_string(), None);
+            return;
+        };
+        self.plan_feedback_pending = false;
+        let mut request = workflow.request;
+        let mut final_text = request.text;
+        if !workflow.extra_feedback.is_empty() {
+            final_text.push_str("\n\nAdditional guidance from planning:\n");
+            for entry in workflow.extra_feedback {
+                final_text.push_str("• ");
+                final_text.push_str(entry.trim());
+                final_text.push('\n');
+            }
+        }
+        final_text.push_str("\n\nPlan approved — execute these steps.");
+        request.text = final_text;
+        self.submit_user_message(request);
+        let placeholder = if self.plan_mode_enabled {
+            PLAN_MODE_PLACEHOLDER.to_string()
+        } else {
+            self.default_placeholder.clone()
+        };
+        self.bottom_pane.set_placeholder_text(placeholder);
+        self.add_info_message(
+            "Plan approved. Executing the requested work...".to_string(),
+            None,
+        );
+    }
+
+    pub(crate) fn prepare_plan_feedback(&mut self) {
+        if !self.plan_review_pending() {
+            self.add_info_message("No plan is awaiting feedback.".to_string(), None);
+            return;
+        }
+        self.plan_feedback_pending = true;
+        self.bottom_pane
+            .set_placeholder_text(PLAN_FEEDBACK_PLACEHOLDER.to_string());
+        self.bottom_pane.set_composer_text(String::new());
+        self.request_redraw();
+    }
+
+    pub(crate) fn cancel_plan_workflow(&mut self) {
+        if let Some(workflow) = self.plan_workflow.take() {
+            let cancelling_plan = matches!(workflow.status, PlanWorkflowStatus::AwaitingPlan);
+            self.plan_feedback_pending = false;
+            let placeholder = if self.plan_mode_enabled {
+                PLAN_MODE_PLACEHOLDER.to_string()
+            } else {
+                self.default_placeholder.clone()
+            };
+            self.bottom_pane.set_placeholder_text(placeholder);
+            if cancelling_plan {
+                self.submit_op(Op::Interrupt);
+            }
+            self.add_info_message("Canceled the pending plan workflow.".to_string(), None);
+        }
+    }
+
+    fn handle_plan_feedback_submission(&mut self, user_message: UserMessage) {
+        if !user_message.image_paths.is_empty() {
+            self.add_to_history(history_cell::new_error_event(
+                "Plan feedback does not support image attachments.".to_string(),
+            ));
+            return;
+        }
+        let trimmed = user_message.text.trim();
+        if trimmed.is_empty() {
+            self.add_to_history(history_cell::new_error_event(
+                "Enter some feedback or press Esc to cancel.".to_string(),
+            ));
+            return;
+        }
+        let Some(workflow) = self.plan_workflow.as_mut() else {
+            self.plan_feedback_pending = false;
+            self.bottom_pane
+                .set_placeholder_text(self.default_placeholder.clone());
+            return;
+        };
+        workflow.extra_feedback.push(trimmed.to_string());
+        workflow.status = PlanWorkflowStatus::AwaitingPlan;
+        self.plan_feedback_pending = false;
+        self.bottom_pane
+            .set_placeholder_text(PLAN_MODE_PLACEHOLDER.to_string());
+        let feedback_text =
+            format!("Plan feedback:\n{trimmed}\n\nPlease revise the plan and wait for approval.");
+        self.submit_user_message(UserMessage {
+            text: feedback_text,
+            display_text: None,
+            image_paths: Vec::new(),
+        });
+        self.add_info_message("Sent feedback for plan refinement.".to_string(), None);
+    }
+
     pub(crate) fn handle_paste(&mut self, text: String) {
         self.bottom_pane.handle_paste(text);
     }
@@ -1841,6 +2229,9 @@ impl ChatWidget {
     }
 
     fn queue_user_message(&mut self, user_message: UserMessage) {
+        if self.handle_plan_submission(user_message.clone()) {
+            return;
+        }
         if self.bottom_pane.is_task_running() {
             self.queued_user_messages.push_back(user_message);
             self.refresh_queued_user_messages();
@@ -1850,7 +2241,11 @@ impl ChatWidget {
     }
 
     fn submit_user_message(&mut self, user_message: UserMessage) {
-        let UserMessage { text, image_paths } = user_message;
+        let UserMessage {
+            text,
+            display_text,
+            image_paths,
+        } = user_message;
         if text.is_empty() && image_paths.is_empty() {
             return;
         }
@@ -1912,17 +2307,21 @@ impl ChatWidget {
             });
 
         // Persist the text to cross-session message history.
-        if !text.is_empty() {
+        let visible_text = display_text.unwrap_or_else(|| text.clone());
+
+        if !visible_text.is_empty() {
             self.codex_op_tx
-                .send(Op::AddToHistory { text: text.clone() })
+                .send(Op::AddToHistory {
+                    text: visible_text.clone(),
+                })
                 .unwrap_or_else(|e| {
                     tracing::error!("failed to send AddHistory op: {e}");
                 });
         }
 
         // Only show the text portion in conversation history.
-        if !text.is_empty() {
-            self.add_to_history(history_cell::new_user_prompt(text));
+        if !visible_text.is_empty() {
+            self.add_to_history(history_cell::new_user_prompt(visible_text));
         }
         self.needs_final_message_separator = false;
     }
@@ -2752,6 +3151,134 @@ impl ChatWidget {
         });
     }
 
+    pub(crate) fn open_settings_popup(&mut self) {
+        let items = self.settings_menu_items();
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            title: Some("Settings".to_string()),
+            subtitle: Some("Customize the Kaioken TUI experience.".to_string()),
+            footer_hint: Some(standard_popup_hint_line()),
+            items,
+            ..Default::default()
+        });
+    }
+
+    fn settings_menu_items(&self) -> Vec<SelectionItem> {
+        let mut items = Vec::new();
+        let show_footer = self.config.show_rate_limits_in_footer;
+        let plan_detail = self.config.plan_detail;
+        let subagent_limit = self
+            .config
+            .subagent_max_tasks
+            .clamp(SUBAGENT_LIMIT_MIN, SUBAGENT_LIMIT_HARD_CAP);
+
+        items.push(SelectionItem {
+            name: "Show rate limit usage in footer".to_string(),
+            description: Some(
+                "Display session usage and weekly quota alongside the context indicator."
+                    .to_string(),
+            ),
+            is_current: show_footer,
+            actions: self.footer_visibility_actions(true),
+            dismiss_on_select: false,
+            ..Default::default()
+        });
+
+        items.push(SelectionItem {
+            name: "Hide rate limit usage in footer".to_string(),
+            description: Some("Keep the footer minimal by removing rate limit summaries.".into()),
+            is_current: !show_footer,
+            actions: self.footer_visibility_actions(false),
+            dismiss_on_select: false,
+            ..Default::default()
+        });
+
+        items.push(SelectionItem {
+            name: "Plan detail — auto".to_string(),
+            description: Some(
+                "Let Kaioken choose between concise (3–4) or detailed (6–10) steps based on scope."
+                    .to_string(),
+            ),
+            is_current: matches!(plan_detail, PlanDetailPreference::Auto),
+            actions: self.plan_detail_actions(PlanDetailPreference::Auto),
+            dismiss_on_select: false,
+            ..Default::default()
+        });
+
+        items.push(SelectionItem {
+            name: "Plan detail — coarse".to_string(),
+            description: Some("Always produce 3–4 high-level steps for quick tasks.".to_string()),
+            is_current: matches!(plan_detail, PlanDetailPreference::Coarse),
+            actions: self.plan_detail_actions(PlanDetailPreference::Coarse),
+            dismiss_on_select: false,
+            ..Default::default()
+        });
+
+        items.push(SelectionItem {
+            name: "Plan detail — detailed".to_string(),
+            description: Some(
+                "Always produce 6–10 steps with file references, tests, and follow-ups."
+                    .to_string(),
+            ),
+            is_current: matches!(plan_detail, PlanDetailPreference::Detailed),
+            actions: self.plan_detail_actions(PlanDetailPreference::Detailed),
+            dismiss_on_select: false,
+            ..Default::default()
+        });
+
+        let concurrency_choices: &[(i64, &str)] = &[
+            (1, "Serial mode — run one helper at a time."),
+            (
+                2,
+                "Light concurrency — 2 helpers for smaller repos or laptops.",
+            ),
+            (4, "Balanced concurrency — default Kaioken throughput."),
+            (6, "High concurrency — faster scans, heavier CPU/IO."),
+            (
+                SUBAGENT_LIMIT_HARD_CAP,
+                "Maximum concurrency — expect heavy system load.",
+            ),
+        ];
+        for (limit, description) in concurrency_choices {
+            items.push(SelectionItem {
+                name: format!("Subagent concurrency — {limit} tasks"),
+                description: Some((*description).to_string()),
+                is_current: subagent_limit == *limit,
+                actions: self.subagent_limit_actions(*limit),
+                dismiss_on_select: false,
+                ..Default::default()
+            });
+        }
+
+        items.push(SelectionItem {
+            name: "Done".to_string(),
+            dismiss_on_select: true,
+            ..Default::default()
+        });
+
+        items
+    }
+
+    fn footer_visibility_actions(&self, show: bool) -> Vec<SelectionAction> {
+        vec![Box::new(move |tx| {
+            tx.send(AppEvent::UpdateShowRateLimitsInFooter(show));
+            tx.send(AppEvent::PersistShowRateLimitsInFooter(show));
+        })]
+    }
+
+    fn plan_detail_actions(&self, detail: PlanDetailPreference) -> Vec<SelectionAction> {
+        vec![Box::new(move |tx| {
+            tx.send(AppEvent::UpdatePlanDetailPreference(detail));
+            tx.send(AppEvent::PersistPlanDetailPreference(detail));
+        })]
+    }
+
+    fn subagent_limit_actions(&self, limit: i64) -> Vec<SelectionAction> {
+        vec![Box::new(move |tx| {
+            tx.send(AppEvent::UpdateSubagentTaskLimit(limit));
+            tx.send(AppEvent::PersistSubagentTaskLimit(limit));
+        })]
+    }
+
     fn approval_preset_actions(
         approval: AskForApproval,
         sandbox: SandboxPolicy,
@@ -3105,6 +3632,52 @@ impl ChatWidget {
         if hidden {
             self.rate_limit_switch_prompt = RateLimitSwitchPromptState::Idle;
         }
+    }
+
+    pub(crate) fn set_show_rate_limits_in_footer(&mut self, show: bool) {
+        if self.config.show_rate_limits_in_footer == show {
+            return;
+        }
+        self.config.show_rate_limits_in_footer = show;
+        self.refresh_rate_limit_footer_summary();
+        let message = if show {
+            "Rate limit usage will appear in the footer."
+        } else {
+            "Rate limit usage hidden from the footer (toggle with /settings)."
+        };
+        self.add_info_message(message.to_string(), None);
+    }
+
+    pub(crate) fn set_plan_detail(&mut self, detail: PlanDetailPreference) {
+        if self.config.plan_detail == detail {
+            return;
+        }
+        self.config.plan_detail = detail;
+        let message = match detail {
+            PlanDetailPreference::Auto => {
+                "Plan mode will auto-adjust between concise and detailed steps."
+            }
+            PlanDetailPreference::Coarse => "Plan mode will focus on 3–4 high-level steps.",
+            PlanDetailPreference::Detailed => {
+                "Plan mode will produce 6–10 implementation-ready steps."
+            }
+        };
+        self.add_info_message(message.to_string(), None);
+    }
+
+    pub(crate) fn set_subagent_task_limit(&mut self, limit: i64) {
+        let normalized = limit.clamp(SUBAGENT_LIMIT_MIN, SUBAGENT_LIMIT_HARD_CAP);
+        if self.config.subagent_max_tasks == normalized {
+            return;
+        }
+        self.config.subagent_max_tasks = normalized;
+        let plural = if normalized == 1 { "" } else { "s" };
+        let mut message =
+            format!("Kaioken will run up to {normalized} subagent task{plural} in parallel.");
+        if normalized >= 6 {
+            message.push_str(" Higher limits can tax CPU and I/O.");
+        }
+        self.add_info_message(message, None);
     }
 
     #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
@@ -3935,6 +4508,33 @@ fn checkpoint_hint(entry: &CheckpointEntry) -> String {
 
 fn short_commit_id(commit_id: &str) -> String {
     commit_id.chars().take(7).collect()
+}
+
+fn rate_limit_footer_summary(snapshot: &RateLimitSnapshotDisplay) -> Option<String> {
+    let mut parts = Vec::new();
+    if let Some(primary) = snapshot.primary.as_ref() {
+        let remaining = (100.0 - primary.used_percent).clamp(0.0, 100.0);
+        let mut text = format!("Limits: {remaining:.0}% left");
+        if let Some(reset) = primary.resets_at.as_ref() {
+            text.push_str(&format!(" (reset {reset})"));
+        }
+        parts.push(text);
+    }
+
+    if let Some(secondary) = snapshot.secondary.as_ref() {
+        let remaining = (100.0 - secondary.used_percent).clamp(0.0, 100.0);
+        let mut text = format!("Weekly left: {remaining:.0}%");
+        if let Some(reset) = secondary.resets_at.as_ref() {
+            text.push_str(&format!(" (reset {reset})"));
+        }
+        parts.push(text);
+    }
+
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" · "))
+    }
 }
 
 #[cfg(test)]

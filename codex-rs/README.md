@@ -18,6 +18,36 @@ Fork branding: this distribution ships as `codex-kaioken` only. Install it to a 
 
 If [`sgrep`](https://github.com/Rika-Labs/sgrep) is installed and on `PATH`, Codex Kaioken exposes a `semantic_search` tool that shells out to `sgrep search --json` for ranked code results. When `sgrep` is absent, the tool is not registered.
 
+### Plan-first workflow
+
+Codex Kaioken can capture a plan before it edits your tree. Press <kbd>Shift</kbd>+<kbd>Tab</kbd> (or run `/plan`) to toggle Plan Mode. When enabled, the next prompt is held while Codex drafts a checklist via the `update_plan` tool. The plan appears in a modal with three actions:
+
+- <kbd>Enter</kbd>: approve and execute the plan.
+- <kbd>F</kbd>: provide feedback; the modal closes so you can type adjustments, then Codex refreshes the plan.
+- <kbd>Esc</kbd>: cancel the workflow entirely.
+
+Use `/plan` again at any time to pop the review UI back up or simply disable the workflow.
+
+Plan fidelity is configurable. Open `/settings` and choose whether Kaioken should generate coarse (3–4) steps, detailed (6–10) implementation tasks, or auto-select based on the request. The composer lights up in cyan while plan mode is active so you can see at a glance when a request will be routed through the planning loop.
+
+### Live subagent harness
+
+The `subagent_run` tool is surfaced prominently in Kaioken. When Codex spins up helper agents (“Read the repo with 3 subagents”), each child session streams its own exec/patch/log history into the conversation so you can watch every tool call, diff, and summary in real time. By default Kaioken allows four concurrent helpers; power users can raise or lower that ceiling (1–8) in `/settings` under “Subagent concurrency” to balance parallelism with local resource limits.
+
+### Session settings palette
+
+Use `/settings` to toggle several Kaioken-only UX affordances without editing `config.toml` by hand:
+
+- Show or hide the session usage / rate-limit footer.
+- Pick the default plan detail preference (auto, coarse, detailed).
+- Adjust the maximum number of concurrent subagent tasks.
+
+All of these toggles persist by writing to `~/.codex/config.toml`, so your preferences survive future upgrades.
+
+### Checkpoints
+
+Kaioken exposes `/checkpoint save <name>`, `/checkpoint list`, and `/checkpoint restore <name>` built on the CLI’s checkpoint protocol. Saving captures the current repository state instantly (the heavy lifting happens inside Codex), and restore applies the stored patch set back onto your workspace. This makes it easy to stage experiments, roll back multi-file edits, or hand teammates a reproducible starting point without juggling manual `git stash` stacks.
+
 We provide Codex CLI as a standalone, native executable to ensure a zero-dependency install.
 
 ## Installing Codex
