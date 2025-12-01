@@ -247,8 +247,10 @@ fn context_window_line(
 ) -> Line<'static> {
     let percent = percent.unwrap_or(100).clamp(0, 100);
     let mut spans = vec![Span::from(format!("{percent}% context left")).dim()];
-    spans.push(" · ".dim());
-    spans.push(semantic_search_status_span(status, spinner, message));
+    if let Some(semantic_span) = semantic_search_status_span(status, spinner, message) {
+        spans.push(" · ".dim());
+        spans.push(semantic_span);
+    }
     if let Some(summary) = rate_limit_summary {
         spans.push(" · ".dim());
         spans.push(Span::from(summary.clone()).dim());
@@ -260,17 +262,17 @@ fn semantic_search_status_span(
     status: SemanticStatus,
     spinner: char,
     message: &Option<String>,
-) -> Span<'static> {
+) -> Option<Span<'static>> {
     match status {
-        SemanticStatus::Missing => "semantic missing".dim(),
+        SemanticStatus::Missing => None,
         SemanticStatus::Indexing => {
             let detail = message
                 .as_ref()
                 .map(|m| format!(" ({m})"))
                 .unwrap_or_default();
-            format!("semantic indexing {spinner}{detail}").dim()
+            Some(format!("semantic indexing {spinner}{detail}").dim())
         }
-        SemanticStatus::Ready => "indexed".dim(),
+        SemanticStatus::Ready => Some("indexed".dim()),
     }
 }
 

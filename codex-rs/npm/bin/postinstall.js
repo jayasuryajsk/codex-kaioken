@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { chmodSync, createWriteStream, renameSync } from 'node:fs';
+import { chmodSync, createWriteStream, existsSync, renameSync, rmSync } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -45,13 +45,25 @@ async function main() {
     console.log(`Using local tarball ${archivePath}`);
   }
 
+  const extractedPath = join(here, 'codex-kaioken');
+  rmSync(extractedPath, { force: true });
+
   console.log('Extracting...');
   await tar.x({ file: archivePath, cwd: here });
   const binaryName = asset.replace('.tar.gz', '');
-  const binaryPath = join(here, binaryName);
-  const targetPath = join(here, 'codex-kaioken');
-  renameSync(binaryPath, targetPath);
-  chmodSync(targetPath, 0o755);
+  const platformPath = join(here, binaryName);
+
+  if (!existsSync(platformPath) && !existsSync(extractedPath)) {
+    console.error(`Extracted binary missing: tried ${platformPath} and ${extractedPath}`);
+    process.exit(1);
+  }
+
+  if (existsSync(platformPath) && platformPath !== extractedPath) {
+    rmSync(extractedPath, { force: true });
+    renameSync(platformPath, extractedPath);
+  }
+
+  chmodSync(extractedPath, 0o755);
 }
 
 main().catch((err) => {
