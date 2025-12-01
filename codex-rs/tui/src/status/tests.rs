@@ -52,24 +52,33 @@ fn render_lines(lines: &[Line<'static>]) -> Vec<String> {
 fn sanitize_directory(lines: Vec<String>) -> Vec<String> {
     lines
         .into_iter()
-        .map(|line| {
-            if let (Some(dir_pos), Some(pipe_idx)) = (line.find("Directory: "), line.rfind('│')) {
-                let prefix = &line[..dir_pos + "Directory: ".len()];
-                let suffix = &line[pipe_idx..];
-                let content_width = pipe_idx.saturating_sub(dir_pos + "Directory: ".len());
-                let replacement = "[[workspace]]";
-                let mut rebuilt = prefix.to_string();
-                rebuilt.push_str(replacement);
-                if content_width > replacement.len() {
-                    rebuilt.push_str(&" ".repeat(content_width - replacement.len()));
-                }
-                rebuilt.push_str(suffix);
-                rebuilt
-            } else {
-                line
-            }
-        })
+        .map(|line| sanitize_commit_field(sanitize_directory_field(line)))
         .collect()
+}
+
+fn sanitize_directory_field(line: String) -> String {
+    sanitize_field(line, "Directory: ", "[[workspace]]")
+}
+
+fn sanitize_commit_field(line: String) -> String {
+    sanitize_field(line, "commit  ", "[[commit]]")
+}
+
+fn sanitize_field(line: String, needle: &str, replacement: &str) -> String {
+    if let (Some(start), Some(pipe_idx)) = (line.find(needle), line.rfind('│')) {
+        let prefix = &line[..start + needle.len()];
+        let suffix = &line[pipe_idx..];
+        let content_width = pipe_idx.saturating_sub(start + needle.len());
+        let mut rebuilt = prefix.to_string();
+        rebuilt.push_str(replacement);
+        if content_width > replacement.len() {
+            rebuilt.push_str(&" ".repeat(content_width - replacement.len()));
+        }
+        rebuilt.push_str(suffix);
+        rebuilt
+    } else {
+        line
+    }
 }
 
 fn reset_at_from(captured_at: &chrono::DateTime<chrono::Local>, seconds: i64) -> i64 {

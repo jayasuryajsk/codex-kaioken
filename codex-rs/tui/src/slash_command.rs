@@ -75,28 +75,33 @@ impl SlashCommand {
     /// Whether this command can be run while a task is in progress.
     pub fn available_during_task(self) -> bool {
         match self {
+            // Commands that either start a new turn, mutate in-flight work,
+            // or would conflict with backend state stay disabled.
             SlashCommand::New
             | SlashCommand::Init
             | SlashCommand::Compact
             | SlashCommand::Undo
             | SlashCommand::Checkpoint
             | SlashCommand::RestoreCheckpoint
-            | SlashCommand::Model
+            | SlashCommand::Review
+            | SlashCommand::Logout => false,
+            // Pure UI/configuration commands (toggle plan mode, change model, adjust approvals/settings)
+            // are safe to run even while a task is executing.
+            SlashCommand::Model
             | SlashCommand::Approvals
             | SlashCommand::Settings
             | SlashCommand::Plan
-            | SlashCommand::Review
-            | SlashCommand::Logout => false,
-            SlashCommand::Diff
+            // All of the commands below already operated during tasks.
+            | SlashCommand::Diff
             | SlashCommand::ListCheckpoints
             | SlashCommand::Mention
             | SlashCommand::Status
             | SlashCommand::Mcp
             | SlashCommand::Feedback
             | SlashCommand::Quit
-            | SlashCommand::Exit => true,
-            SlashCommand::Rollout => true,
-            SlashCommand::TestApproval => true,
+            | SlashCommand::Exit
+            | SlashCommand::Rollout
+            | SlashCommand::TestApproval => true,
         }
     }
 

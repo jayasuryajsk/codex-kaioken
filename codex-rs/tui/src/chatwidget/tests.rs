@@ -1195,6 +1195,20 @@ fn legacy_restore_command_is_supported_with_notice() {
 }
 
 #[test]
+fn model_change_mid_task_shows_footer_notice() {
+    let (mut chat, _rx, _op_rx) = make_chatwidget_manual();
+    assert!(chat.bottom_pane.footer_notice().is_none());
+    chat.bottom_pane.set_task_running(true);
+    chat.set_model("gpt-5.1-codex-high");
+    assert_eq!(
+        chat.bottom_pane.footer_notice(),
+        Some("Model set to gpt-5.1-codex-high (applies after current task)")
+    );
+    chat.bottom_pane.set_task_running(false);
+    assert!(chat.bottom_pane.footer_notice().is_none());
+}
+
+#[test]
 fn checkpoint_restore_subcommand_submits_op() {
     let (mut chat, _rx, mut op_rx) = make_chatwidget_manual();
 
@@ -2007,8 +2021,8 @@ fn disabled_slash_command_while_task_running_snapshot() {
     let (mut chat, mut rx, _op_rx) = make_chatwidget_manual();
     chat.bottom_pane.set_task_running(true);
 
-    // Dispatch a command that is unavailable while a task runs (e.g., /model)
-    chat.dispatch_command(SlashCommand::Model);
+    // Dispatch a command that is unavailable while a task runs (e.g., /checkpoint)
+    chat.dispatch_command(SlashCommand::Checkpoint);
 
     // Drain history and snapshot the rendered error line(s)
     let cells = drain_insert_history(&mut rx);

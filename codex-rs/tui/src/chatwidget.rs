@@ -3092,6 +3092,29 @@ impl ChatWidget {
         }
     }
 
+    fn approval_policy_label(policy: AskForApproval) -> &'static str {
+        match policy {
+            AskForApproval::UnlessTrusted => "untrusted",
+            AskForApproval::OnFailure => "on-failure",
+            AskForApproval::OnRequest => "on-request",
+            AskForApproval::Never => "never",
+        }
+    }
+
+    fn sandbox_policy_summary(policy: &SandboxPolicy) -> String {
+        match policy {
+            SandboxPolicy::DangerFullAccess => "danger-full-access".to_string(),
+            SandboxPolicy::ReadOnly => "read-only".to_string(),
+            SandboxPolicy::WorkspaceWrite { network_access, .. } => {
+                if *network_access {
+                    "workspace-write (network on)".to_string()
+                } else {
+                    "workspace-write".to_string()
+                }
+            }
+        }
+    }
+
     fn apply_model_and_effort(&self, model: String, effort: Option<ReasoningEffortConfig>) {
         self.app_event_tx
             .send(AppEvent::CodexOp(Op::OverrideTurnContext {
@@ -3694,6 +3717,10 @@ impl ChatWidget {
     /// Set the approval policy in the widget's config copy.
     pub(crate) fn set_approval_policy(&mut self, policy: AskForApproval) {
         self.config.approval_policy = policy;
+        self.bottom_pane.show_footer_notice(format!(
+            "Approval policy set to {}",
+            Self::approval_policy_label(policy)
+        ));
     }
 
     /// Set the sandbox policy in the widget's config copy.
@@ -3703,6 +3730,9 @@ impl ChatWidget {
             || codex_core::get_platform_sandbox().is_some();
 
         self.config.sandbox_policy = policy;
+        let summary = Self::sandbox_policy_summary(&self.config.sandbox_policy);
+        self.bottom_pane
+            .show_footer_notice(format!("Sandbox policy set to {summary}"));
 
         #[cfg(target_os = "windows")]
         if should_clear_downgrade {
@@ -3782,12 +3812,24 @@ impl ChatWidget {
     /// Set the reasoning effort in the widget's config copy.
     pub(crate) fn set_reasoning_effort(&mut self, effort: Option<ReasoningEffortConfig>) {
         self.config.model_reasoning_effort = effort;
+        let summary = match effort {
+            Some(ReasoningEffortConfig::None) | None => {
+                "Reasoning effort reset to default".to_string()
+            }
+            Some(other) => format!(
+                "Reasoning effort set to {}",
+                Self::reasoning_effort_label(other)
+            ),
+        };
+        self.bottom_pane.show_footer_notice(summary);
     }
 
     /// Set the model in the widget's config copy.
     pub(crate) fn set_model(&mut self, model: &str) {
         self.session_header.set_model(model);
         self.config.model = model.to_string();
+        self.bottom_pane
+            .show_footer_notice(format!("Model set to {model}"));
     }
 
     pub(crate) fn add_info_message(&mut self, message: String, hint: Option<String>) {
