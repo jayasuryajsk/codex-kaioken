@@ -430,16 +430,21 @@ impl UserMessage {
     }
 }
 
+const CHECKPOINT_COMMAND: &str = "/checkpoint";
+const LIST_CHECKPOINTS_COMMAND: &str = "/checkpoints";
+const RESTORE_CHECKPOINT_COMMAND: &str = "/restore-checkpoint";
+const RESTORE_LEGACY_COMMAND: &str = "/restore";
+
 enum LocalCommand {
     Checkpoint(String),
-    Restore(String),
+    Restore { name: String, legacy_alias: bool },
     List,
 }
 
 impl LocalCommand {
     fn parse(text: &str) -> Option<Self> {
-        fn tail_segment<'a>(text: &'a str, command: &str) -> Option<&'a str> {
-            let rest = text.strip_prefix(command)?;
+        fn tail_segment<'a>(text: &'a str, token: &str) -> Option<&'a str> {
+            let rest = text.strip_prefix(token)?;
             if rest.is_empty() {
                 Some(rest)
             } else if rest.chars().next().is_some_and(char::is_whitespace) {
@@ -449,13 +454,37 @@ impl LocalCommand {
             }
         }
 
-        if let Some(rest) = tail_segment(text, "/checkpoint") {
+        if let Some(rest) = tail_segment(text, CHECKPOINT_COMMAND) {
+            if rest.is_empty() {
+                return Some(LocalCommand::List);
+            }
+            if let Some(name) = tail_segment(rest, "save") {
+                return Some(LocalCommand::Checkpoint(name.to_string()));
+            }
+            if let Some(name) = tail_segment(rest, "restore") {
+                return Some(LocalCommand::Restore {
+                    name: name.to_string(),
+                    legacy_alias: false,
+                });
+            }
+            if tail_segment(rest, "list").is_some() {
+                return Some(LocalCommand::List);
+            }
             return Some(LocalCommand::Checkpoint(rest.to_string()));
         }
-        if let Some(rest) = tail_segment(text, "/restore") {
-            return Some(LocalCommand::Restore(rest.to_string()));
+        if let Some(rest) = tail_segment(text, RESTORE_CHECKPOINT_COMMAND) {
+            return Some(LocalCommand::Restore {
+                name: rest.to_string(),
+                legacy_alias: false,
+            });
         }
-        if text == "/checkpoints" {
+        if let Some(rest) = tail_segment(text, RESTORE_LEGACY_COMMAND) {
+            return Some(LocalCommand::Restore {
+                name: rest.to_string(),
+                legacy_alias: true,
+            });
+        }
+        if text == LIST_CHECKPOINTS_COMMAND {
             return Some(LocalCommand::List);
         }
         None
@@ -463,9 +492,9 @@ impl LocalCommand {
 
     fn name(&self) -> &'static str {
         match self {
-            LocalCommand::Checkpoint(_) => "/checkpoint",
-            LocalCommand::Restore(_) => "/restore",
-            LocalCommand::List => "/checkpoints",
+            LocalCommand::Checkpoint(_) => CHECKPOINT_COMMAND,
+            LocalCommand::Restore { .. } => RESTORE_CHECKPOINT_COMMAND,
+            LocalCommand::List => LIST_CHECKPOINTS_COMMAND,
         }
     }
 }
@@ -1875,8 +1904,10 @@ impl ChatWidget {
                 self.request_redraw();
             }
             SlashCommand::RestoreCheckpoint => {
-                self.insert_str("/restore ");
-                self.request_redraw();
+                if !self.open_restore_checkpoint_popup() {
+                    self.insert_str("/restore-checkpoint ");
+                    self.request_redraw();
+                }
             }
             SlashCommand::ListCheckpoints => {
                 self.app_event_tx
@@ -2280,7 +2311,7 @@ impl ChatWidget {
             }
             if matches!(
                 command,
-                LocalCommand::Checkpoint(_) | LocalCommand::Restore(_)
+                LocalCommand::Checkpoint(_) | LocalCommand::Restore { .. }
             ) && self.bottom_pane.is_task_running()
             {
                 self.add_to_history(history_cell::new_error_event(format!(
@@ -2338,13 +2369,25 @@ impl ChatWidget {
                 }
                 self.submit_op(Op::CreateCheckpoint { name });
             }
-            LocalCommand::Restore(name) => {
+            LocalCommand::Restore { name, legacy_alias } => {
                 if name.trim().is_empty() {
+                    if self.open_restore_checkpoint_popup() {
+                        return;
+                    }
                     self.add_to_history(history_cell::new_error_event(
-                        "Provide a checkpoint name to restore (e.g., `/restore before-fix`)."
-                            .to_string(),
+                        "Provide a checkpoint name to restore (e.g., `/restore-checkpoint before-fix`).".to_string(),
                     ));
                     return;
+                }
+                if legacy_alias {
+                    self.add_info_message(
+                        "Heads-up: `/restore` has been renamed to `/restore-checkpoint <name>`."
+                            .to_string(),
+                        Some(
+                            "Use the new slash command to pick from recent checkpoints."
+                                .to_string(),
+                        ),
+                    );
                 }
                 self.submit_op(Op::RestoreCheckpoint { name });
             }
@@ -3161,6 +3204,53 @@ impl ChatWidget {
             items,
             ..Default::default()
         });
+    }
+
+    fn open_restore_checkpoint_popup(&mut self) -> bool {
+        if self.recent_checkpoints.is_empty() {
+            return false;
+        }
+        let mut items: Vec<SelectionItem> = Vec::new();
+        for (idx, name) in self.recent_checkpoints.iter().enumerate() {
+            let checkpoint_name = name.clone();
+            let selection_label = checkpoint_name.clone();
+            let actions: Vec<SelectionAction> = vec![Box::new(move |tx| {
+                tx.send(AppEvent::CodexOp(Op::RestoreCheckpoint {
+                    name: checkpoint_name.clone(),
+                }));
+            })];
+            let description = if idx == 0 {
+                Some("Most recent checkpoint.".to_string())
+            } else {
+                None
+            };
+            items.push(SelectionItem {
+                name: selection_label,
+                description,
+                actions,
+                dismiss_on_select: true,
+                ..Default::default()
+            });
+        }
+        items.push(SelectionItem {
+            name: "Show all checkpoints (/checkpoints)".to_string(),
+            description: Some("Refresh the stored list of checkpoints.".to_string()),
+            actions: vec![Box::new(|tx| {
+                tx.send(AppEvent::CodexOp(Op::ListCheckpoints));
+            })],
+            dismiss_on_select: true,
+            ..Default::default()
+        });
+
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            title: Some("Restore checkpoint".to_string()),
+            subtitle: Some("Select a checkpoint to restore immediately.".to_string()),
+            footer_hint: Some(standard_popup_hint_line()),
+            items,
+            ..Default::default()
+        });
+        self.request_redraw();
+        true
     }
 
     fn settings_menu_items(&self) -> Vec<SelectionItem> {

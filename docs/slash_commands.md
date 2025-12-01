@@ -21,7 +21,7 @@ Control Codex’s behavior during an interactive session with slash commands.
 | `/compact`   | summarize conversation to prevent hitting the context limit |
 | `/undo`      | ask Codex to undo a turn                                    |
 | `/checkpoint <name>` | save a named checkpoint for later restoration       |
-| `/restore <name>` | restore a previously saved checkpoint                  |
+| `/restore-checkpoint <name>` | restore a previously saved checkpoint or pick from recent ones |
 | `/checkpoints` | list saved checkpoints in this session                    |
 | `/diff`      | show git diff (including untracked files)                   |
 | `/mention`   | mention a file                                              |

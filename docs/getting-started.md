@@ -81,9 +81,9 @@ When the chat composer is empty, press Esc to prime “backtrack” mode. Press 
 
 In the transcript preview, the footer shows an `Esc edit prev` hint while editing is active.
 
-#### `/checkpoint`, `/restore`, `/checkpoints`
+#### `/checkpoint`, `/restore-checkpoint`, `/checkpoints`
 
-When you want a manual save point outside of git, run `/checkpoint <name>` in the composer. Codex captures a ghost snapshot immediately so you can experiment freely. Use `/restore <name>` to jump back to that snapshot, and `/checkpoints` to see every save point created during the session.
+When you want a manual save point outside of git, run `/checkpoint <name>` in the composer. Codex captures a ghost snapshot immediately so you can experiment freely. Use `/restore-checkpoint <name>` (or pick from the recent-checkpoint popup) to jump back to that snapshot, and `/checkpoints` to see every save point created during the session.
 
 #### `/settings` for UI toggles
 
