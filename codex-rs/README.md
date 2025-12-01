@@ -18,7 +18,16 @@ Codex Kaioken is a fork of OpenAI’s Codex CLI that focuses on aggressive UX up
 
 ### Install & run
 
-There isn’t an npm/brew package yet, so build from source:
+**Prebuilt (npm):**
+
+```bash
+npm install -g @jayasuryajsk/codex-kaioken
+codex-kaioken --version
+```
+
+The npm wrapper fetches the latest GitHub release asset for your platform, installs it under the global npm prefix, and keeps your `$PATH` clean (the shim lives in the same place as other global npm binaries).
+
+**Build from source:**
 
 ```bash
 git clone https://github.com/jayasuryajsk/codex-kaioken.git
@@ -35,6 +44,15 @@ cp target/debug/codex ~/.codex-kaioken/bin/codex-kaioken
 ```
 
 Keep `~/.codex-kaioken/bin` ahead of any upstream `codex` install on your `PATH` so you always launch the Kaioken binary.
+
+### Semantic search dependency (`sgrep`)
+
+Semantic code search relies on [`sgrep`](https://github.com/Rika-Labs/sgrep). Kaioken does not bundle it automatically, so install it separately and keep it on your `PATH`:
+
+1. Download the appropriate release asset from the sgrep GitHub releases (or `brew install sgrep` on macOS if you already use Homebrew).
+2. Move the extracted `sgrep` binary somewhere on your `PATH` (for example `~/.local/bin` or `/usr/local/bin`) and `chmod +x` it.
+
+When `sgrep` is present, Kaioken automatically exposes the `semantic_search` tool and maintains the index in the background. If it is absent, the UI simply omits semantic-search status rather than displaying a warning.
 
 Most docs live under [`codex-rs/docs/`](./codex-rs/docs):
 

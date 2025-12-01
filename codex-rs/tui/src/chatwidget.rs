@@ -922,7 +922,7 @@ impl ChatWidget {
                 self.submit_op(Op::Interrupt);
                 self.open_plan_review_popup();
                 self.add_info_message(
-                    "Plan ready — review it before Codex proceeds.".to_string(),
+                    "Plan ready — review it before Codex Kaioken proceeds.".to_string(),
                     None,
                 );
             } else if workflow.awaiting_approval() {
@@ -2015,7 +2015,7 @@ impl ChatWidget {
             return true;
         }
         self.add_info_message(
-            "Codex is still drafting your plan. Wait for the plan to finish or disable plan mode."
+            "Codex Kaioken is still drafting your plan. Wait for the plan to finish or disable plan mode."
                 .to_string(),
             None,
         );
@@ -2037,7 +2037,8 @@ impl ChatWidget {
             .set_placeholder_text(PLAN_MODE_PLACEHOLDER.to_string());
         self.submit_user_message(submission);
         self.add_info_message(
-            "Drafting a plan… Codex will wait for approval before making changes.".to_string(),
+            "Drafting a plan… Codex Kaioken will wait for approval before making changes."
+                .to_string(),
             None,
         );
     }
@@ -3356,7 +3357,7 @@ impl ChatWidget {
         let mut header_children: Vec<Box<dyn Renderable>> = Vec::new();
         let title_line = Line::from("Enable full access?").bold();
         let info_line = Line::from(vec![
-            "When Codex runs with full access, it can edit any file on your computer and run commands with network, without your approval. "
+            "When Codex Kaioken runs with full access, it can edit any file on your computer and run commands with network, without your approval. "
                 .into(),
             "Exercise caution when enabling full access. This significantly increases the risk of data loss, leaks, or unexpected behavior."
                 .fg(Color::Red),
@@ -4041,7 +4042,7 @@ impl Notification {
             }
             Notification::EditApprovalRequested { cwd, changes } => {
                 format!(
-                    "Codex wants to edit {}",
+                    "Codex Kaioken wants to edit {}",
                     if changes.len() == 1 {
                         #[allow(clippy::unwrap_used)]
                         display_path_for(changes.first().unwrap(), cwd)

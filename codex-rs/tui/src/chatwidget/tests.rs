@@ -341,7 +341,7 @@ fn make_chatwidget_manual() -> (
         frame_requester: FrameRequester::test_dummy(),
         has_input_focus: true,
         enhanced_keys_supported: false,
-        placeholder_text: "Ask Codex to do anything".to_string(),
+        placeholder_text: "Ask Codex Kaioken to do anything".to_string(),
         disable_paste_burst: false,
         animations_enabled: cfg.animations,
     });
@@ -389,7 +389,7 @@ fn make_chatwidget_manual() -> (
         plan_mode_enabled: false,
         plan_workflow: None,
         plan_feedback_pending: false,
-        default_placeholder: "Ask Codex to do anything".to_string(),
+        default_placeholder: "Ask Codex Kaioken to do anything".to_string(),
     };
     (widget, rx, op_rx)
 }

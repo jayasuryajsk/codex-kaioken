@@ -16,7 +16,7 @@ Buffer {
         "                                                                                ",
         "› 1. Yes, proceed (y)                                                           ",
         "  2. Yes, and don't ask again for this command (a)                              ",
-        "  3. No, and tell Codex what to do differently (esc)                            ",
+        "  3. No, and tell Codex Kaioken what to do differently (esc)                    ",
         "                                                                                ",
         "  Press enter to confirm or esc to cancel                                       ",
     ],
@@ -32,8 +32,8 @@ Buffer {
         x: 21, y: 9, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
         x: 48, y: 10, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
         x: 49, y: 10, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-        x: 48, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
-        x: 51, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+        x: 56, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+        x: 59, y: 11, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
         x: 2, y: 13, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
     ]
 }

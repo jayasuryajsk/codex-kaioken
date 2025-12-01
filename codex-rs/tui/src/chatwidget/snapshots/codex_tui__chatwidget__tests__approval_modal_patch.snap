@@ -12,6 +12,6 @@ expression: terminal.backend().vt100().screen().contents()
     2 +world
 
 › 1. Yes, proceed (y)
-  2. No, and tell Codex what to do differently (esc)
+  2. No, and tell Codex Kaioken what to do differently (esc)
 
   Press enter to confirm or esc to cancel
