@@ -1138,11 +1138,68 @@ fn checkpoint_command_submits_op() {
 }
 
 #[test]
+fn checkpoint_save_subcommand_submits_op() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual();
+
+    chat.submit_user_message(UserMessage {
+        text: "/checkpoint save base".into(),
+        display_text: None,
+        image_paths: Vec::new(),
+    });
+
+    match op_rx.try_recv() {
+        Ok(Op::CreateCheckpoint { name }) => assert_eq!(name, "base"),
+        other => panic!("expected CreateCheckpoint op, got {other:?}"),
+    }
+}
+
+#[test]
 fn restore_checkpoint_command_submits_op() {
     let (mut chat, _rx, mut op_rx) = make_chatwidget_manual();
 
     chat.submit_user_message(UserMessage {
-        text: "/restore base".into(),
+        text: "/restore-checkpoint base".into(),
+        display_text: None,
+        image_paths: Vec::new(),
+    });
+
+    match op_rx.try_recv() {
+        Ok(Op::RestoreCheckpoint { name }) => assert_eq!(name, "base"),
+        other => panic!("expected RestoreCheckpoint op, got {other:?}"),
+    }
+}
+
+#[test]
+fn legacy_restore_command_is_supported_with_notice() {
+    let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual();
+
+    chat.submit_user_message(UserMessage {
+        text: "/restore legacy".into(),
+        display_text: None,
+        image_paths: Vec::new(),
+    });
+
+    match op_rx.try_recv() {
+        Ok(Op::RestoreCheckpoint { name }) => assert_eq!(name, "legacy"),
+        other => panic!("expected RestoreCheckpoint op, got {other:?}"),
+    }
+
+    let cells = drain_insert_history(&mut rx);
+    let rendered: Vec<String> = cells.iter().map(|c| lines_to_single_string(c)).collect();
+    assert!(
+        rendered
+            .iter()
+            .any(|text| text.contains("`/restore` has been renamed")),
+        "expected notice about the renamed command, got {rendered:?}"
+    );
+}
+
+#[test]
+fn checkpoint_restore_subcommand_submits_op() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual();
+
+    chat.submit_user_message(UserMessage {
+        text: "/checkpoint restore base".into(),
         display_text: None,
         image_paths: Vec::new(),
     });
@@ -1159,6 +1216,22 @@ fn list_checkpoints_command_submits_op() {
 
     chat.submit_user_message(UserMessage {
         text: "/checkpoints".into(),
+        display_text: None,
+        image_paths: Vec::new(),
+    });
+
+    match op_rx.try_recv() {
+        Ok(Op::ListCheckpoints) => {}
+        other => panic!("expected ListCheckpoints op, got {other:?}"),
+    }
+}
+
+#[test]
+fn checkpoint_list_subcommand_submits_op() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual();
+
+    chat.submit_user_message(UserMessage {
+        text: "/checkpoint list".into(),
         display_text: None,
         image_paths: Vec::new(),
     });

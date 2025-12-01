@@ -47,7 +47,9 @@ impl SlashCommand {
             SlashCommand::Review => "review my current changes and find issues",
             SlashCommand::Undo => "ask Codex Kaioken to undo a turn",
             SlashCommand::Checkpoint => "save a named checkpoint (use `/checkpoint <name>`)",
-            SlashCommand::RestoreCheckpoint => "restore a saved checkpoint (`/restore <name>`)",
+            SlashCommand::RestoreCheckpoint => {
+                "restore a saved checkpoint (`/restore-checkpoint <name>`)"
+            }
             SlashCommand::ListCheckpoints => "list saved checkpoints",
             SlashCommand::Quit | SlashCommand::Exit => "exit Codex Kaioken",
             SlashCommand::Diff => "show git diff (including untracked files)",
