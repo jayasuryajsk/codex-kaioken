@@ -49,7 +49,7 @@ Keep `~/.codex-kaioken/bin` ahead of any upstream `codex` install on your `PATH`
 
 Semantic code search relies on [`sgrep`](https://github.com/Rika-Labs/sgrep). Kaioken does not bundle it automatically, so install it separately and keep it on your `PATH`:
 
-1. Download the appropriate release asset from the sgrep GitHub releases (or `brew install sgrep` on macOS if you already use Homebrew).
+1. Download the appropriate release asset from the sgrep GitHub releases.
 2. Move the extracted `sgrep` binary somewhere on your `PATH` (for example `~/.local/bin` or `/usr/local/bin`) and `chmod +x` it.
 
 When `sgrep` is present, Kaioken automatically exposes the `semantic_search` tool and maintains the index in the background. If it is absent, the UI simply omits semantic-search status rather than displaying a warning.
