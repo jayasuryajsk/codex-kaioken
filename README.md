@@ -2,9 +2,7 @@
 
 Codex Kaioken is a fork of OpenAI’s Codex CLI that focuses on aggressive UX upgrades, multi-agent workflows, and tight integration with developer tooling. The Rust workspace that powers the CLI lives in [`codex-rs/`](./codex-rs), and every binary built from this repo ships as `codex-kaioken` to avoid clashing with upstream `codex`.
 
-<p align="center"><code>npm i -g codex-kaioken</code><br />or <code>brew install --cask codex-kaioken</code></p>
-
-> **Why “Kaioken”?** It is our “power-up” harness: we keep stacking capabilities (parallel subagents, real-time streaming, semantic search, MCP integrations, etc.) so that Codex feels faster and more autonomous without any extra setup from the user.
+> **Why “Kaioken”?** It’s a fork of Codex focused on aggressive UX polish and orchestration so the CLI feels faster and more autonomous out of the box.
 
 ## Highlights
 
@@ -20,21 +18,18 @@ Codex Kaioken is a fork of OpenAI’s Codex CLI that focuses on aggressive UX up
 
 ### Install & run
 
-Use your preferred package manager:
+#### Install via npm (prebuilt binaries)
+
+Prefer a zero-build install? The published npm wrapper downloads the correct binary from the latest GitHub release and places it on your `PATH`.
 
 ```bash
-npm install -g codex-kaioken
-# or
-brew install --cask codex-kaioken
+npm install -g @jayasuryajsk/codex-kaioken
+codex-kaioken --version
 ```
 
-Then launch:
+The package version matches this repository (for example `0.1.2`) and automatically fetches the corresponding tarball (`codex-kaioken-<platform>.tar.gz`) that CI attached to the release.
 
-```bash
-codex-kaioken
-```
-
-### Build from source
+#### Build from source
 
 ```bash
 git clone https://github.com/jayasuryajsk/codex-kaioken.git
@@ -51,17 +46,6 @@ cp target/debug/codex ~/.codex-kaioken/bin/codex-kaioken
 ```
 
 Keep `~/.codex-kaioken/bin` ahead of any upstream `codex` install on your `PATH` so you always launch the Kaioken binary.
-
-### Install via npm (prebuilt binaries)
-
-Prefer a zero-build install? The published npm wrapper downloads the correct binary from the latest GitHub release and places it on your `PATH`.
-
-```bash
-npm install -g @jayasuryajsk/codex-kaioken
-codex-kaioken --version
-```
-
-The package version matches this repository (for example `0.1.2`) and automatically fetches the corresponding tarball (`codex-kaioken-<platform>.tar.gz`) that CI attached to the release.
 
 ## Documentation
 Most docs live under [`codex-rs/docs/`](./codex-rs/docs):
