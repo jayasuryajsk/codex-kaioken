@@ -29,6 +29,8 @@ codex-kaioken --version
 
 The package version matches this repository (for example `0.1.2`) and automatically fetches the corresponding tarball (`codex-kaioken-<platform>.tar.gz`) that CI attached to the release.
 
+> ⚠️ Windows: the npm package currently ships macOS and Linux binaries. On Windows you’ll need to build from source (or run inside WSL) until Windows release artifacts are added.
+
 #### Build from source
 
 ```bash
@@ -46,6 +48,21 @@ cp target/debug/codex ~/.codex-kaioken/bin/codex-kaioken
 ```
 
 Keep `~/.codex-kaioken/bin` ahead of any upstream `codex` install on your `PATH` so you always launch the Kaioken binary.
+
+##### Windows manual build
+
+Until Windows release artifacts land you can compile the CLI yourself:
+
+```powershell
+git clone https://github.com/jayasuryajsk/codex-kaioken.git
+cd codex-kaioken\codex-rs
+cargo build -p codex-cli --bin codex-kaioken --release
+New-Item -ItemType Directory -Force $env:USERPROFILE\.codex-kaioken\bin | Out-Null
+Copy-Item target\release\codex-kaioken.exe $env:USERPROFILE\.codex-kaioken\bin\
+$env:USERPROFILE\.codex-kaioken\bin\codex-kaioken.exe
+```
+
+Ensure `%USERPROFILE%\.codex-kaioken\bin` (or `~/.codex-kaioken/bin` in WSL) appears before any upstream `codex` binary on `PATH`.
 
 ## Documentation
 Most docs live under [`codex-rs/docs/`](./codex-rs/docs):

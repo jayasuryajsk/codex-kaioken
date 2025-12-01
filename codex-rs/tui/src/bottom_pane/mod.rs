@@ -82,6 +82,7 @@ pub(crate) struct BottomPane {
     semantic_status: SemanticStatus,
     semantic_message: Option<String>,
     semantic_spinner: SemanticSpinner,
+    footer_notice: Option<String>,
 }
 
 pub(crate) struct BottomPaneParams {
@@ -127,6 +128,7 @@ impl BottomPane {
             semantic_status: SemanticStatus::Ready,
             semantic_message: None,
             semantic_spinner: SemanticSpinner::new(),
+            footer_notice: None,
         };
         pane.composer.set_semantic_status(
             pane.semantic_status,
@@ -335,6 +337,7 @@ impl BottomPane {
                 self.request_redraw();
             }
         } else {
+            self.clear_footer_notice();
             // Hide the status indicator when a task completes, but keep other modal views.
             self.hide_status_indicator();
         }
@@ -356,6 +359,32 @@ impl BottomPane {
             ));
             self.request_redraw();
         }
+    }
+
+    pub(crate) fn show_footer_notice(&mut self, summary: String) {
+        if !self.is_task_running {
+            return;
+        }
+        let message = format!("{summary} (applies after current task)");
+        if self.footer_notice.as_ref() == Some(&message) {
+            return;
+        }
+        self.footer_notice = Some(message.clone());
+        self.composer
+            .set_footer_hint_override(Some(vec![("NEXT".to_string(), message)]));
+        self.request_redraw();
+    }
+
+    pub(crate) fn clear_footer_notice(&mut self) {
+        if self.footer_notice.take().is_some() {
+            self.composer.set_footer_hint_override(None);
+            self.request_redraw();
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn footer_notice(&self) -> Option<&str> {
+        self.footer_notice.as_deref()
     }
 
     pub(crate) fn set_interrupt_hint_visible(&mut self, visible: bool) {
