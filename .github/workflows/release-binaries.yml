@@ -67,7 +67,7 @@ jobs:
 
       - name: Upload artifact (dry run)
         if: ${{ github.event_name != 'release' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.archive }}
           path: ${{ matrix.archive }}
