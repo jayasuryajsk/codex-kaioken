@@ -2,7 +2,7 @@
 
 Codex Kaioken is a fork of OpenAI’s Codex CLI that focuses on aggressive UX upgrades, multi-agent workflows, and tight integration with developer tooling. The Rust workspace that powers the CLI lives in [`codex-rs/`](./codex-rs), and every binary built from this repo ships as `codex-kaioken` to avoid clashing with upstream `codex`.
 
-> **Why “Kaioken”?** It is our “power-up” harness: we keep stacking capabilities (parallel subagents, real-time streaming, semantic search, MCP integrations, etc.) so that Codex feels faster and more autonomous without any extra setup from the user.
+> **Why “Kaioken”?** It’s a fork of Codex that layers on aggressive UX polish and orchestration so the CLI feels faster and more autonomous out of the box.
 
 ## Highlights
 
@@ -49,7 +49,7 @@ Keep `~/.codex-kaioken/bin` ahead of any upstream `codex` install on your `PATH`
 
 Semantic code search relies on [`sgrep`](https://github.com/Rika-Labs/sgrep). Kaioken does not bundle it automatically, so install it separately and keep it on your `PATH`:
 
-1. Download the appropriate release asset from the sgrep GitHub releases (or `brew install sgrep` on macOS if you already use Homebrew).
+1. Download the appropriate release asset from the sgrep GitHub releases.
 2. Move the extracted `sgrep` binary somewhere on your `PATH` (for example `~/.local/bin` or `/usr/local/bin`) and `chmod +x` it.
 
 When `sgrep` is present, Kaioken automatically exposes the `semantic_search` tool and maintains the index in the background. If it is absent, the UI simply omits semantic-search status rather than displaying a warning.
