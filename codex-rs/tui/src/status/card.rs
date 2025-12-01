@@ -36,6 +36,8 @@ use crate::wrapping::RtOptions;
 use crate::wrapping::word_wrap_lines;
 use codex_core::AuthManager;
 
+const MAX_CARD_INNER_WIDTH: usize = 110;
+
 #[derive(Debug, Clone)]
 struct StatusContextWindowData {
     percent_remaining: i64,
@@ -285,18 +287,33 @@ impl StatusHistoryCell {
 impl HistoryCell for StatusHistoryCell {
     fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
         let mut lines: Vec<Line<'static>> = Vec::new();
+        let version_string = display_version().to_string();
+        let (release_version, commit_suffix) = version_string
+            .split_once('+')
+            .map(|(release, commit)| (release.to_string(), Some(commit.to_string())))
+            .unwrap_or_else(|| (version_string.clone(), None));
+
         lines.push(Line::from(vec![
             Span::from(format!("{}>_ ", FieldFormatter::INDENT)).dim(),
             Span::from("Codex Kaioken").bold(),
-            Span::from(" ").dim(),
-            Span::from(format!("(v{})", display_version())).dim(),
         ]));
+        let mut version_line = vec![
+            Span::from(format!("{}version  ", FieldFormatter::INDENT)).dim(),
+            Span::from(format!("v{release_version}")),
+        ];
+        if let Some(commit) = commit_suffix {
+            version_line.push(Span::from("    ").dim());
+            version_line.push(Span::from("commit  ").dim());
+            version_line.push(Span::from(commit));
+        }
+        lines.push(Line::from(version_line));
         lines.push(Line::from(Vec::<Span<'static>>::new()));
 
         let available_inner_width = usize::from(width.saturating_sub(4));
         if available_inner_width == 0 {
             return Vec::new();
         }
+        let card_inner_width = available_inner_width.min(MAX_CARD_INNER_WIDTH);
 
         let account_value = self.account.as_ref().map(|account| match account {
             StatusAccountDisplay::ChatGpt { email, plan } => match (email, plan) {
@@ -330,7 +347,7 @@ impl HistoryCell for StatusHistoryCell {
         self.collect_rate_limit_labels(&mut seen, &mut labels);
 
         let formatter = FieldFormatter::from_labels(labels.iter().map(String::as_str));
-        let value_width = formatter.value_width(available_inner_width);
+        let value_width = formatter.value_width(card_inner_width);
 
         let note_first_line = Line::from(vec![
             Span::from("Visit ").cyan(),
@@ -344,7 +361,7 @@ impl HistoryCell for StatusHistoryCell {
         ]);
         let note_lines = word_wrap_lines(
             [note_first_line, note_second_line],
-            RtOptions::new(available_inner_width),
+            RtOptions::new(card_inner_width),
         );
         lines.extend(note_lines);
         lines.push(Line::from(Vec::<Span<'static>>::new()));
@@ -382,10 +399,10 @@ impl HistoryCell for StatusHistoryCell {
             lines.push(formatter.line("Context window", spans));
         }
 
-        lines.extend(self.rate_limit_lines(available_inner_width, &formatter));
+        lines.extend(self.rate_limit_lines(card_inner_width, &formatter));
 
         let content_width = lines.iter().map(line_display_width).max().unwrap_or(0);
-        let inner_width = content_width.min(available_inner_width);
+        let inner_width = content_width.min(card_inner_width);
         let truncated_lines: Vec<Line<'static>> = lines
             .into_iter()
             .map(|line| truncate_line_to_width(line, inner_width))

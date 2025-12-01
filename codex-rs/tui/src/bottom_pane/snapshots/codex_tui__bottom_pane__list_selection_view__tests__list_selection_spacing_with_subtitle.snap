@@ -4,9 +4,11 @@ expression: render_lines(&view)
 ---
                                                 
   Select Approval Mode                          
-  Switch between Codex approval presets         
+  Switch between Kaioken approval presets       
                                                 
-› 1. Read Only (current)  Codex can read files  
-  2. Full Access          Codex can edit files  
+› 1. Read Only (current)  Codex Kaioken can     
+                          read files            
+  2. Full Access          Codex Kaioken can     
+                          edit files            
                                                 
   Press enter to confirm or esc to go back

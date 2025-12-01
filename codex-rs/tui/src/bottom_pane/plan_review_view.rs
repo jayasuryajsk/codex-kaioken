@@ -52,7 +52,13 @@ impl PlanReviewView {
 
     fn render_lines(&self, width: u16) -> Vec<Line<'static>> {
         let mut lines: Vec<Line<'static>> = Vec::new();
-        lines.push(vec!["Plan mode".bold(), " — review Codex's proposal".into()].into());
+        lines.push(
+            vec![
+                "Plan mode".bold(),
+                " — review Codex Kaioken's proposal".into(),
+            ]
+            .into(),
+        );
         if let Some(goal) = &self.goal_summary {
             lines.push(vec!["Goal: ".dim(), goal.clone().into()].into());
         }

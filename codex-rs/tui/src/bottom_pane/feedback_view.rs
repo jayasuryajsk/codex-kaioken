@@ -446,7 +446,7 @@ pub(crate) fn feedback_upload_consent_params(
             super::SelectionItem {
                 name: "Yes".to_string(),
                 description: Some(
-                    "Share the current Codex session logs with the team for troubleshooting."
+                    "Share the current Codex Kaioken session logs with the team for troubleshooting."
                         .to_string(),
                 ),
                 actions: vec![yes_action],

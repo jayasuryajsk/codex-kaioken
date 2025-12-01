@@ -5,7 +5,8 @@ expression: sanitized
 /status
 
 ╭───────────────────────────────────────────────────────────────────╮
-│  >_ Codex Kaioken (v0.1.2+2166fe7ba)                              │
+│  >_ Codex Kaioken                                                 │
+│  version  v0.1.2    commit  cc7e3b3f6                             │
 │                                                                   │
 │ Visit https://chatgpt.com/codex/settings/usage for up-to-date     │
 │ information on rate limits and credits                            │
