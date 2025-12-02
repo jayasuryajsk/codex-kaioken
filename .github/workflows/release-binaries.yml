@@ -15,11 +15,11 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: macos-14
+          - os: macos-15
             target: aarch64-apple-darwin
             archive: codex-kaioken-aarch64-apple-darwin.tar.gz
             use_cross: "false"
-          - os: macos-13
+          - os: macos-15-intel
             target: x86_64-apple-darwin
             archive: codex-kaioken-x86_64-apple-darwin.tar.gz
             use_cross: "false"
@@ -59,14 +59,15 @@ jobs:
             cargo build --release -p codex-cli --bin codex-kaioken --target ${{ matrix.target }}
           fi
 
-      - name: Package artifact (tar.gz or zip)
+      - name: Package artifact (zip on Windows)
+        if: ${{ contains(matrix.os, 'windows') }}
+        shell: pwsh
+        run: 7z a ${{ matrix.archive }} codex-rs/target/${{ matrix.target }}/release/codex-kaioken.exe
+
+      - name: Package artifact (tar.gz)
+        if: ${{ !contains(matrix.os, 'windows') }}
         shell: bash
-        run: |
-          if [[ "${{ matrix.os }}" == windows-latest ]]; then
-            7z a ${{ matrix.archive }} codex-rs/target/${{ matrix.target }}/release/codex-kaioken.exe
-          else
-            tar -czf ${{ matrix.archive }} -C codex-rs/target/${{ matrix.target }}/release codex-kaioken
-          fi
+        run: tar -czf ${{ matrix.archive }} -C codex-rs/target/${{ matrix.target }}/release codex-kaioken
 
       - name: Attach asset to release
         if: ${{ github.event_name == 'release' }}
