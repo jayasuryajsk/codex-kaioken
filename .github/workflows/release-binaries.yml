@@ -52,6 +52,7 @@ jobs:
 
       - name: Build codex-kaioken
         working-directory: codex-rs
+        shell: bash
         run: |
           if [ "${{ matrix.use_cross }}" = "true" ]; then
             cross build --release -p codex-cli --bin codex-kaioken --target ${{ matrix.target }}
