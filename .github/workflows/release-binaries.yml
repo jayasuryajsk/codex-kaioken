@@ -31,6 +31,10 @@ jobs:
             target: aarch64-unknown-linux-musl
             archive: codex-kaioken-aarch64-unknown-linux-musl.tar.gz
             use_cross: "true"
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: codex-kaioken-x86_64-pc-windows-msvc.zip
+            use_cross: "false"
 
     env:
       CARGO_TERM_COLOR: always
@@ -55,9 +59,14 @@ jobs:
             cargo build --release -p codex-cli --bin codex-kaioken --target ${{ matrix.target }}
           fi
 
-      - name: Package artifact
+      - name: Package artifact (tar.gz or zip)
+        shell: bash
         run: |
-          tar -czf ${{ matrix.archive }} -C codex-rs/target/${{ matrix.target }}/release codex-kaioken
+          if [[ "${{ matrix.os }}" == windows-latest ]]; then
+            7z a ${{ matrix.archive }} codex-rs/target/${{ matrix.target }}/release/codex-kaioken.exe
+          else
+            tar -czf ${{ matrix.archive }} -C codex-rs/target/${{ matrix.target }}/release codex-kaioken
+          fi
 
       - name: Attach asset to release
         if: ${{ github.event_name == 'release' }}
