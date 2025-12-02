@@ -27,7 +27,7 @@ npm install -g @jayasuryajsk/codex-kaioken
 codex-kaioken --version
 ```
 
-The package version matches this repository (for example `0.1.2`) and automatically fetches the corresponding tarball (`codex-kaioken-<platform>.tar.gz`) that CI attached to the release.
+The package version matches this repository (for example `0.1.5`) and automatically fetches the corresponding tarball (`codex-kaioken-<platform>.tar.gz`) that CI attached to the release.
 
 > ⚠️ Windows: the npm package currently ships macOS and Linux binaries. On Windows you’ll need to build from source (or run inside WSL) until Windows release artifacts are added.
 
