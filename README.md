@@ -20,16 +20,14 @@ Codex Kaioken is a fork of OpenAI’s Codex CLI that focuses on aggressive UX up
 
 #### Install via npm (prebuilt binaries)
 
-Prefer a zero-build install? The published npm wrapper downloads the correct binary from the latest GitHub release and places it on your `PATH`.
+Prefer a zero-build install? The published npm wrapper downloads the correct binary (tar.gz on macOS/Linux, zip on Windows) from the latest GitHub release and places it on your `PATH`.
 
 ```bash
 npm install -g @jayasuryajsk/codex-kaioken
 codex-kaioken --version
 ```
 
-The package version matches this repository (for example `0.1.5`) and automatically fetches the corresponding tarball (`codex-kaioken-<platform>.tar.gz`) that CI attached to the release.
-
-> ⚠️ Windows: the npm package currently ships macOS and Linux binaries. On Windows you’ll need to build from source (or run inside WSL) until Windows release artifacts are added.
+The package version matches this repository (for example `0.1.5`) and automatically fetches the corresponding artifact (`codex-kaioken-<platform>.tar.gz` or `.zip`) that CI attached to the release.
 
 #### Build from source
 
@@ -49,9 +47,9 @@ cp target/debug/codex ~/.codex-kaioken/bin/codex-kaioken
 
 Keep `~/.codex-kaioken/bin` ahead of any upstream `codex` install on your `PATH` so you always launch the Kaioken binary.
 
-##### Windows manual build
+##### Windows manual build (optional)
 
-Until Windows release artifacts land you can compile the CLI yourself:
+If npm fails on Windows, you can compile the CLI yourself:
 
 ```powershell
 git clone https://github.com/jayasuryajsk/codex-kaioken.git
