@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import fetch from 'node-fetch';
 import tar from 'tar';
 
-const version = process.env.CODEX_KAIOKEN_VERSION || '0.1.2';
+const version = process.env.CODEX_KAIOKEN_VERSION || '0.1.4';
 const platform = process.platform;
 const arch = process.arch;
 
