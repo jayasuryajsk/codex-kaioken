@@ -298,7 +298,7 @@ For casual greetings, acknowledgements, or other one-off conversational messages
 ## Subagents
 
 - Use `subagent_run` to fan out independent tasks (max 4) with concise names/prompts and optional `cwd`; prefer when work can run in parallel.
-- Child sessions auto-approve (no permission prompts), run with workspace-write/no-network sandbox, and have shell/unified-exec/apply-patch-freeform disabled; default timeout is 60s unless `timeout_ms` is set.
+- Child sessions auto-approve (no permission prompts), run with workspace-write/no-network sandbox, and have shell/unified-exec/apply-patch-freeform disabled; no default timeout is applied unless `timeout_ms` is set.
 - When the user asks for “subagents”, “parallel agents”, or multiple agents, actually call `subagent_run` instead of just narrating a plan.
 
 # Tool Guidelines
