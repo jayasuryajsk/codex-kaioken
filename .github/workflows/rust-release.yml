@@ -502,7 +502,7 @@ jobs:
         with:
           node-version: 22
           registry-url: "https://registry.npmjs.org"
-          scope: "@openai"
+          scope: "@jayasuryajsk"
 
       # Trusted publishing requires npm CLI version 11.5.1 or later.
       - name: Update npm
