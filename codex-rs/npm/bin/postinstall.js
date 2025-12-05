@@ -17,8 +17,8 @@ const mapping = {
   'darwin-arm64': 'codex-kaioken-aarch64-apple-darwin.tar.gz',
   'linux-x64': 'codex-kaioken-x86_64-unknown-linux-musl.tar.gz',
   'linux-arm64': 'codex-kaioken-aarch64-unknown-linux-musl.tar.gz',
-  'win32-x64': 'codex-x86_64-pc-windows-msvc.exe.zip',
-  'win32-arm64': 'codex-aarch64-pc-windows-msvc.exe.zip',
+  'win32-x64': 'codex-kaioken-x86_64-pc-windows-msvc.zip',
+  'win32-arm64': 'codex-kaioken-aarch64-pc-windows-msvc.zip',
 };
 
 const key = `${platform}-${arch}`;
@@ -59,37 +59,16 @@ async function main() {
 
   if (isZip) {
     // Extract zip archive (Windows)
+    // The zip contains codex-kaioken.exe directly
     await pipeline(
       createReadStream(archivePath),
       unzipper.Extract({ path: here })
     );
 
-    // The zip contains files like codex-x86_64-pc-windows-msvc.exe
-    // We need to rename it to codex-kaioken.exe
-    const extractedName = asset.replace('.zip', '');
-    const platformPath = join(here, extractedName);
-
-    if (existsSync(platformPath)) {
-      renameSync(platformPath, extractedPath);
-    } else {
-      // Try alternate naming patterns
-      const altNames = [
-        `codex-${arch === 'x64' ? 'x86_64' : 'aarch64'}-pc-windows-msvc.exe`,
-        'codex.exe',
-      ];
-      let found = false;
-      for (const altName of altNames) {
-        const altPath = join(here, altName);
-        if (existsSync(altPath)) {
-          renameSync(altPath, extractedPath);
-          found = true;
-          break;
-        }
-      }
-      if (!found && !existsSync(extractedPath)) {
-        console.error(`Extracted binary missing: tried ${platformPath} and alternates`);
-        process.exit(1);
-      }
+    // Verify the binary was extracted
+    if (!existsSync(extractedPath)) {
+      console.error(`Extracted binary missing: ${extractedPath}`);
+      process.exit(1);
     }
   } else {
     // Extract tar.gz archive (macOS/Linux)
