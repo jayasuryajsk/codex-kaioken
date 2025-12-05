@@ -27,7 +27,7 @@ npm install -g @jayasuryajsk/codex-kaioken
 codex-kaioken --version
 ```
 
-The package version matches this repository (for example `0.1.5`) and automatically fetches the corresponding artifact (`codex-kaioken-<platform>.tar.gz` or `.zip`) that CI attached to the release.
+The package version matches this repository (for example `0.1.6`) and automatically fetches the corresponding artifact (`codex-kaioken-<platform>.tar.gz` or `.zip`) that CI attached to the release.
 
 #### Build from source
 

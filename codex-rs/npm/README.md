@@ -5,7 +5,7 @@ This package installs the Codex Kaioken CLI by downloading the appropriate binar
 ## Installation
 
 ```bash
-npm install -g codex-kaioken
+npm install -g @jayasuryajsk/codex-kaioken
 ```
 
 During `postinstall` the package fetches the `codex-kaioken` binary for your platform, marks it executable, and exposes it on your `PATH`.
