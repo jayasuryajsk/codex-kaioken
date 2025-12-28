@@ -8,15 +8,15 @@ import fetch from 'node-fetch';
 import tar from 'tar';
 import unzipper from 'unzipper';
 
-const version = process.env.CODEX_KAIOKEN_VERSION || '0.1.7';
+const version = process.env.CODEX_KAIOKEN_VERSION || '0.1.8';
 const platform = process.platform;
 const arch = process.arch;
 
 const mapping = {
   'darwin-x64': 'codex-kaioken-x86_64-apple-darwin.tar.gz',
   'darwin-arm64': 'codex-kaioken-aarch64-apple-darwin.tar.gz',
-  'linux-x64': 'codex-kaioken-x86_64-unknown-linux-musl.tar.gz',
-  'linux-arm64': 'codex-kaioken-aarch64-unknown-linux-musl.tar.gz',
+  'linux-x64': 'codex-kaioken-x86_64-unknown-linux-gnu.tar.gz',
+  'linux-arm64': 'codex-kaioken-aarch64-unknown-linux-gnu.tar.gz',
   'win32-x64': 'codex-kaioken-x86_64-pc-windows-msvc.zip',
   'win32-arm64': 'codex-kaioken-aarch64-pc-windows-msvc.zip',
 };
