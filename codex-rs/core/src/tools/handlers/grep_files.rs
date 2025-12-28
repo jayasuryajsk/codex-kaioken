@@ -17,7 +17,7 @@ pub struct GrepFilesHandler;
 
 const DEFAULT_LIMIT: usize = 100;
 const MAX_LIMIT: usize = 2000;
-const COMMAND_TIMEOUT: Duration = Duration::from_secs(30);
+const COMMAND_TIMEOUT: Duration = Duration::from_secs(300);
 
 fn default_limit() -> usize {
     DEFAULT_LIMIT

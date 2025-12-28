@@ -11,6 +11,7 @@ use crate::protocol::Event;
 use crate::protocol::EventMsg;
 use crate::protocol::SessionConfiguredEvent;
 use crate::rollout::RolloutRecorder;
+use crate::skills::SkillsManager;
 use codex_protocol::ConversationId;
 use codex_protocol::items::TurnItem;
 use codex_protocol::models::ResponseItem;
@@ -35,14 +36,17 @@ pub struct NewConversation {
 pub struct ConversationManager {
     conversations: Arc<RwLock<HashMap<ConversationId, Arc<CodexConversation>>>>,
     auth_manager: Arc<AuthManager>,
+    skills_manager: Arc<SkillsManager>,
     session_source: SessionSource,
 }
 
 impl ConversationManager {
     pub fn new(auth_manager: Arc<AuthManager>, session_source: SessionSource) -> Self {
+        let skills_manager = Arc::new(SkillsManager::new(auth_manager.codex_home().to_path_buf()));
         Self {
             conversations: Arc::new(RwLock::new(HashMap::new())),
             auth_manager,
+            skills_manager,
             session_source,
         }
     }
@@ -50,10 +54,18 @@ impl ConversationManager {
     /// Construct with a dummy AuthManager containing the provided CodexAuth.
     /// Used for integration tests: should not be used by ordinary business logic.
     pub fn with_auth(auth: CodexAuth) -> Self {
-        Self::new(
-            crate::AuthManager::from_auth_for_testing(auth),
-            SessionSource::Exec,
-        )
+        let auth_manager = crate::AuthManager::from_auth_for_testing(auth);
+        let skills_manager = Arc::new(SkillsManager::new(auth_manager.codex_home().to_path_buf()));
+        Self {
+            conversations: Arc::new(RwLock::new(HashMap::new())),
+            auth_manager,
+            skills_manager,
+            session_source: SessionSource::Exec,
+        }
+    }
+
+    pub fn skills_manager(&self) -> Arc<SkillsManager> {
+        self.skills_manager.clone()
     }
 
     pub fn session_source(&self) -> SessionSource {

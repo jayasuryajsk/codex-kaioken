@@ -4,6 +4,7 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use std::time::Instant;
 
 use codex_app_server_protocol::AuthMode;
 use codex_backend_client::Client as BackendClient;
@@ -162,11 +163,93 @@ const USER_SHELL_COMMAND_HELP_TITLE: &str = "Prefix a command with ! to run it l
 const USER_SHELL_COMMAND_HELP_HINT: &str = "Example: !ls";
 const PLAN_MODE_PLACEHOLDER: &str = "Plan mode enabled — describe the goal";
 const PLAN_FEEDBACK_PLACEHOLDER: &str = "Describe plan adjustments and press Enter";
+/// Status of a background terminal
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TerminalStatus {
+    Running,
+    Finished,
+    Error,
+}
+
+/// Maximum output lines to keep in buffer per terminal
+const TERMINAL_OUTPUT_BUFFER_SIZE: usize = 100;
+
+/// How long to keep finished terminals before auto-cleanup (seconds)
+const TERMINAL_AUTO_CLEANUP_SECS: u64 = 60;
+
 // Track information about an in-flight exec command.
 struct RunningCommand {
     command: Vec<String>,
     parsed_cmd: Vec<ParsedCommand>,
     source: ExecCommandSource,
+    /// Optional human-readable name for this terminal
+    name: Option<String>,
+    /// Buffered output lines (last N lines)
+    output_buffer: VecDeque<String>,
+    /// When the command started
+    started_at: Instant,
+    /// When the command finished (if finished)
+    finished_at: Option<Instant>,
+    /// Current status
+    status: TerminalStatus,
+    /// Exit code if finished
+    exit_code: Option<i32>,
+}
+
+impl RunningCommand {
+    fn new(command: Vec<String>, parsed_cmd: Vec<ParsedCommand>, source: ExecCommandSource) -> Self {
+        Self {
+            command,
+            parsed_cmd,
+            source,
+            name: None,
+            output_buffer: VecDeque::with_capacity(TERMINAL_OUTPUT_BUFFER_SIZE),
+            started_at: Instant::now(),
+            finished_at: None,
+            status: TerminalStatus::Running,
+            exit_code: None,
+        }
+    }
+
+    fn add_output_line(&mut self, line: String) {
+        if self.output_buffer.len() >= TERMINAL_OUTPUT_BUFFER_SIZE {
+            self.output_buffer.pop_front();
+        }
+        self.output_buffer.push_back(line);
+    }
+
+    fn display_name(&self) -> String {
+        self.name.clone().unwrap_or_else(|| {
+            self.command.first().map(|s| s.clone()).unwrap_or_else(|| "terminal".to_string())
+        })
+    }
+
+    fn elapsed(&self) -> Duration {
+        self.finished_at.unwrap_or_else(Instant::now).duration_since(self.started_at)
+    }
+
+    fn should_auto_cleanup(&self) -> bool {
+        if self.status == TerminalStatus::Running {
+            return false;
+        }
+        if let Some(finished) = self.finished_at {
+            finished.elapsed().as_secs() > TERMINAL_AUTO_CLEANUP_SECS
+        } else {
+            false
+        }
+    }
+}
+
+/// Format elapsed time for terminal display
+fn format_terminal_elapsed(duration: std::time::Duration) -> String {
+    let secs = duration.as_secs();
+    if secs < 60 {
+        format!("{}.{}s", secs, duration.subsec_millis() / 100)
+    } else if secs < 3600 {
+        format!("{}m {}s", secs / 60, secs % 60)
+    } else {
+        format!("{}h {}m", secs / 3600, (secs % 3600) / 60)
+    }
 }
 
 struct UnifiedExecWaitState {
@@ -520,6 +603,7 @@ impl ChatWidget {
             semantic_status,
             semantic_message,
             checkpoint_names: self.recent_checkpoints.iter().cloned().collect(),
+            memory_count: 0, // TODO: Wire from MemoryManager
         }
     }
 
@@ -995,9 +1079,19 @@ impl ChatWidget {
 
     fn on_exec_command_output_delta(
         &mut self,
-        _ev: codex_core::protocol::ExecCommandOutputDeltaEvent,
+        ev: codex_core::protocol::ExecCommandOutputDeltaEvent,
     ) {
-        // TODO: Handle streaming exec output if/when implemented
+        // Capture output in the running command's buffer for /ps preview
+        if let Some(rc) = self.running_commands.get_mut(&ev.call_id) {
+            // Convert chunk to string, handling invalid UTF-8 gracefully
+            let text = String::from_utf8_lossy(&ev.chunk);
+            // Split by newlines and add each line to the buffer
+            for line in text.lines() {
+                if !line.is_empty() {
+                    rc.add_output_line(line.to_string());
+                }
+            }
+        }
     }
 
     fn on_patch_apply_begin(&mut self, event: PatchApplyBeginEvent) {
@@ -1340,18 +1434,38 @@ impl ChatWidget {
     }
 
     pub(crate) fn handle_exec_end_now(&mut self, ev: ExecCommandEndEvent) {
-        let running = self.running_commands.remove(&ev.call_id);
-        if self.suppressed_exec_calls.remove(&ev.call_id) {
-            return;
-        }
-        let (command, parsed, source) = match running {
-            Some(rc) => (rc.command, rc.parsed_cmd, rc.source),
-            None => (
+        // Update the running command's status instead of removing immediately
+        // This allows /ps to show finished terminals until auto-cleanup
+        let (command, parsed, source, terminal_name) = if let Some(rc) = self.running_commands.get_mut(&ev.call_id) {
+            rc.finished_at = Some(std::time::Instant::now());
+            rc.exit_code = Some(ev.exit_code);
+            rc.status = if ev.exit_code == 0 {
+                TerminalStatus::Finished
+            } else {
+                TerminalStatus::Error
+            };
+            let name = rc.display_name();
+            (rc.command.clone(), rc.parsed_cmd.clone(), rc.source, Some(name))
+        } else {
+            (
                 vec![ev.call_id.clone()],
                 Vec::new(),
                 ExecCommandSource::Agent,
-            ),
+                None,
+            )
         };
+
+        // Notify on background terminal completion
+        if let Some(name) = terminal_name {
+            self.notify(Notification::TerminalCompleted {
+                name,
+                exit_code: ev.exit_code,
+            });
+        }
+
+        if self.suppressed_exec_calls.remove(&ev.call_id) {
+            return;
+        }
         let is_unified_exec_interaction =
             matches!(source, ExecCommandSource::UnifiedExecInteraction);
 
@@ -1395,6 +1509,7 @@ impl ChatWidget {
                 self.flush_active_cell();
             }
         }
+        self.update_terminal_count();
     }
 
     pub(crate) fn handle_patch_apply_end_now(
@@ -1461,16 +1576,28 @@ impl ChatWidget {
         self.request_redraw();
     }
 
+    /// Update the footer with current terminal counts
+    fn update_terminal_count(&mut self) {
+        let running = self
+            .running_commands
+            .values()
+            .filter(|rc| rc.status == TerminalStatus::Running)
+            .count();
+        let finished = self
+            .running_commands
+            .values()
+            .filter(|rc| rc.status != TerminalStatus::Running)
+            .count();
+        self.bottom_pane.set_terminal_count(running, finished);
+    }
+
     pub(crate) fn handle_exec_begin_now(&mut self, ev: ExecCommandBeginEvent) {
         // Ensure the status indicator is visible while the command runs.
         self.running_commands.insert(
             ev.call_id.clone(),
-            RunningCommand {
-                command: ev.command.clone(),
-                parsed_cmd: ev.parsed_cmd.clone(),
-                source: ev.source,
-            },
+            RunningCommand::new(ev.command.clone(), ev.parsed_cmd.clone(), ev.source),
         );
+        self.update_terminal_count();
         let is_wait_interaction = matches!(ev.source, ExecCommandSource::UnifiedExecInteraction)
             && ev
                 .interaction_input
@@ -1800,6 +1927,14 @@ impl ChatWidget {
             _ => {
                 match self.bottom_pane.handle_key_event(key_event) {
                     InputResult::Submitted(text) => {
+                        // Handle /remember command with arguments
+                        if let Some(rest) = text.strip_prefix("/remember ") {
+                            let memory_text = rest.trim();
+                            if !memory_text.is_empty() {
+                                self.handle_remember_command(memory_text);
+                                return;
+                            }
+                        }
                         // If a task is running, queue the user input to be sent after the turn completes.
                         let user_message = UserMessage {
                             text,
@@ -1936,6 +2071,18 @@ impl ChatWidget {
             SlashCommand::Status => {
                 self.add_status_output();
             }
+            SlashCommand::Ps => {
+                self.add_ps_output();
+            }
+            SlashCommand::Kill => {
+                self.show_kill_terminal_popup();
+            }
+            SlashCommand::Experimental => {
+                self.open_experimental_popup();
+            }
+            SlashCommand::Skills => {
+                self.add_skills_output();
+            }
             SlashCommand::Mcp => {
                 self.add_mcp_output();
             }
@@ -1986,6 +2133,14 @@ impl ChatWidget {
                         grant_root: Some(PathBuf::from("/tmp")),
                     }),
                 }));
+            }
+            SlashCommand::Remember => {
+                // Insert "/remember " and let user type what to remember
+                self.insert_str("/remember ");
+                self.request_redraw();
+            }
+            SlashCommand::Memories => {
+                self.add_memories_output();
             }
         }
     }
@@ -2529,6 +2684,12 @@ impl ChatWidget {
             | EventMsg::AgentMessageContentDelta(_)
             | EventMsg::ReasoningContentDelta(_)
             | EventMsg::ReasoningRawContentDelta(_) => {}
+            EventMsg::MemoryRememberResponse(resp) => {
+                self.on_memory_remember_response(resp);
+            }
+            EventMsg::MemoryListResponse(resp) => {
+                self.on_memory_list_response(resp);
+            }
         }
     }
 
@@ -2674,6 +2835,211 @@ impl ChatWidget {
             Local::now(),
         ));
     }
+
+    /// Show the list of background terminals/running commands via /ps.
+    pub(crate) fn add_ps_output(&mut self) {
+        if self.running_commands.is_empty() {
+            self.add_info_message(
+                "No background terminals running.".to_string(),
+                Some("Use unified_exec feature to run commands in background.".to_string()),
+            );
+            return;
+        }
+
+        // Build boxed panel output for each terminal
+        let mut output_lines: Vec<String> = Vec::new();
+        output_lines.push(format!("**Background Terminals ({}):**\n", self.running_commands.len()));
+
+        for (call_id, rc) in &self.running_commands {
+            let elapsed = rc.elapsed();
+            let elapsed_str = format_terminal_elapsed(elapsed);
+
+            // Status indicator
+            let status_icon = match rc.status {
+                TerminalStatus::Running => "⠋",
+                TerminalStatus::Finished => "✓",
+                TerminalStatus::Error => "✗",
+            };
+
+            // Box width (adjust based on content)
+            let name = rc.display_name();
+            let cmd_display = rc.command.join(" ");
+            let header_content_len = name.len() + elapsed_str.len() + 4; // status + spacing
+            let box_width = std::cmp::max(40, std::cmp::min(60, header_content_len + 10));
+
+            // Top border with header
+            // ┌─ name ─────────────── ⠋ 3.2s ─┐
+            let header_left = format!("─ {} ", name);
+            let header_right = format!(" {} {} ─", status_icon, elapsed_str);
+            let fill_len = box_width.saturating_sub(header_left.len() + header_right.len() + 2);
+            let fill = "─".repeat(fill_len);
+            output_lines.push(format!("```"));
+            output_lines.push(format!("┌{}{}{}┐", header_left, fill, header_right));
+
+            // Command line
+            let cmd_truncated = if cmd_display.len() > box_width - 4 {
+                format!("{}...", &cmd_display[..box_width - 7])
+            } else {
+                cmd_display.clone()
+            };
+            let cmd_padding = box_width - 2 - cmd_truncated.len();
+            output_lines.push(format!("│ {}{} │", cmd_truncated, " ".repeat(cmd_padding)));
+
+            // Show last few output lines if available
+            let preview_lines: Vec<&String> = rc.output_buffer.iter().rev().take(3).collect();
+            if !preview_lines.is_empty() {
+                output_lines.push(format!("│{}│", "─".repeat(box_width - 2)));
+                for line in preview_lines.iter().rev() {
+                    let line_truncated = if line.len() > box_width - 4 {
+                        format!("{}...", &line[..box_width - 7])
+                    } else {
+                        line.to_string()
+                    };
+                    let line_padding = box_width - 2 - line_truncated.len();
+                    output_lines.push(format!("│ {}{} │", line_truncated, " ".repeat(line_padding)));
+                }
+            }
+
+            // Exit code if finished
+            if let Some(exit_code) = rc.exit_code {
+                let exit_msg = format!("Exit: {}", exit_code);
+                let exit_padding = box_width - 2 - exit_msg.len();
+                output_lines.push(format!("│ {}{} │", exit_msg, " ".repeat(exit_padding)));
+            }
+
+            // Bottom border
+            output_lines.push(format!("└{}┘", "─".repeat(box_width - 2)));
+            output_lines.push(format!("```"));
+
+            // Call ID for reference
+            output_lines.push(format!("  ID: `{}`\n", call_id));
+        }
+
+        self.add_info_message(output_lines.join("\n"), None);
+    }
+
+    /// Show a popup to select which terminal to kill.
+    fn show_kill_terminal_popup(&mut self) {
+        // Get running terminals only
+        let running_terminals: Vec<_> = self
+            .running_commands
+            .iter()
+            .filter(|(_, rc)| rc.status == TerminalStatus::Running)
+            .map(|(id, rc)| (id.clone(), rc.display_name(), rc.command.join(" ")))
+            .collect();
+
+        if running_terminals.is_empty() {
+            self.add_info_message(
+                "No running terminals to kill.".to_string(),
+                Some("Use `/ps` to see all terminals.".to_string()),
+            );
+            return;
+        }
+
+        // Build selection items
+        let items: Vec<_> = running_terminals
+            .into_iter()
+            .map(|(id, name, cmd)| {
+                let call_id = id.clone();
+                SelectionItem {
+                    name: format!("{} - {}", name, cmd),
+                    description: Some(format!("ID: {}", id)),
+                    actions: vec![Box::new(move |tx: &AppEventSender| {
+                        tx.send(AppEvent::KillTerminal { call_id: call_id.clone() });
+                    })],
+                    dismiss_on_select: true,
+                    ..Default::default()
+                }
+            })
+            .collect();
+
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            title: Some("Kill Terminal".to_string()),
+            subtitle: Some("Select a terminal to kill".to_string()),
+            items,
+            ..Default::default()
+        });
+        self.request_redraw();
+    }
+
+    /// Kill a terminal by call_id
+    pub(crate) fn kill_terminal(&mut self, call_id: String) {
+        let display_name = if let Some(rc) = self.running_commands.get(&call_id) {
+            if rc.status != TerminalStatus::Running {
+                self.add_info_message(
+                    format!("Terminal '{}' is not running.", rc.display_name()),
+                    None,
+                );
+                return;
+            }
+            rc.display_name()
+        } else {
+            self.add_info_message(
+                format!("Terminal with ID '{}' not found.", call_id),
+                None,
+            );
+            return;
+        };
+
+        // Remove from running commands and update count
+        self.running_commands.remove(&call_id);
+        self.update_terminal_count();
+
+        self.add_info_message(
+            format!("Removed terminal '{}' from tracking.", display_name),
+            Some("Note: The underlying process may still be running.".to_string()),
+        );
+    }
+
+    /// Show available skills via /skills.
+    pub(crate) fn add_skills_output(&mut self) {
+        use codex_core::skills::load_skills_for_cwd;
+        use codex_core::skills::SkillLoadOutcome;
+
+        // Load skills for the current working directory
+        let outcome = load_skills_for_cwd(&self.config.codex_home, &self.config.cwd);
+
+        match outcome {
+            SkillLoadOutcome { skills, errors } if skills.is_empty() && errors.is_empty() => {
+                self.add_info_message(
+                    "No skills found.".to_string(),
+                    Some("Create a SKILL.md file in your project or ~/.codex/skills/ to add custom skills.".to_string()),
+                );
+            }
+            SkillLoadOutcome { skills, errors } => {
+                let mut message = String::new();
+
+                if !skills.is_empty() {
+                    message.push_str(&format!("**Available Skills ({}):**\n", skills.len()));
+                    for skill in &skills {
+                        message.push_str(&format!(
+                            "  - **{}** - {}\n    `{}`\n",
+                            skill.name,
+                            skill.description,
+                            skill.path.display()
+                        ));
+                    }
+                }
+
+                if !errors.is_empty() {
+                    if !message.is_empty() {
+                        message.push('\n');
+                    }
+                    message.push_str(&format!("**Errors ({}):**\n", errors.len()));
+                    for error in &errors {
+                        message.push_str(&format!(
+                            "  - `{}`: {}\n",
+                            error.path.display(),
+                            error.message
+                        ));
+                    }
+                }
+
+                self.add_info_message(message, None);
+            }
+        }
+    }
+
     fn stop_rate_limit_poller(&mut self) {
         if let Some(handle) = self.rate_limit_poller.take() {
             handle.abort();
@@ -2745,6 +3111,24 @@ impl ChatWidget {
 
     pub(crate) fn tick(&mut self) {
         self.bottom_pane.tick();
+        self.cleanup_finished_terminals();
+    }
+
+    /// Remove terminals that have been finished for longer than the cleanup threshold.
+    fn cleanup_finished_terminals(&mut self) {
+        let to_remove: Vec<String> = self
+            .running_commands
+            .iter()
+            .filter(|(_, rc)| rc.should_auto_cleanup())
+            .map(|(id, _)| id.clone())
+            .collect();
+
+        if !to_remove.is_empty() {
+            for id in to_remove {
+                self.running_commands.remove(&id);
+            }
+            self.update_terminal_count();
+        }
     }
 
     fn maybe_start_semantic_watch(&mut self, sgrep_bin: PathBuf, cwd: PathBuf) -> bool {
@@ -3223,6 +3607,70 @@ impl ChatWidget {
         self.bottom_pane.show_selection_view(SelectionViewParams {
             title: Some("Settings".to_string()),
             subtitle: Some("Customize the Kaioken TUI experience.".to_string()),
+            footer_hint: Some(standard_popup_hint_line()),
+            items,
+            ..Default::default()
+        });
+    }
+
+    /// Open the experimental features popup via /experimental.
+    pub(crate) fn open_experimental_popup(&mut self) {
+        use codex_core::features::Stage;
+        use codex_core::features::FEATURES;
+
+        let mut items: Vec<SelectionItem> = Vec::new();
+
+        // Collect beta and experimental features that can be toggled
+        for spec in FEATURES.iter() {
+            if !matches!(spec.stage, Stage::Beta | Stage::Experimental) {
+                continue;
+            }
+
+            let is_enabled = self.config.features.enabled(spec.id);
+            let feature_key = spec.key.to_string();
+            let stage_label = match spec.stage {
+                Stage::Beta => "[Beta]",
+                Stage::Experimental => "[Experimental]",
+                _ => "",
+            };
+
+            let name = format!("{} {}", spec.key, stage_label);
+            let description = Some(format!(
+                "{} (default: {})",
+                feature_description(spec.id),
+                if spec.default_enabled { "on" } else { "off" }
+            ));
+
+            let feature_key_clone = feature_key.clone();
+            let toggle_to = !is_enabled;
+            let actions: Vec<SelectionAction> = vec![Box::new(move |tx| {
+                tx.send(AppEvent::ToggleFeature {
+                    key: feature_key_clone.clone(),
+                    enabled: toggle_to,
+                });
+            })];
+
+            items.push(SelectionItem {
+                name,
+                description,
+                is_current: is_enabled,
+                actions,
+                dismiss_on_select: false,
+                ..Default::default()
+            });
+        }
+
+        if items.is_empty() {
+            self.add_info_message(
+                "No experimental features available.".to_string(),
+                None,
+            );
+            return;
+        }
+
+        self.bottom_pane.show_selection_view(SelectionViewParams {
+            title: Some("Experimental Features".to_string()),
+            subtitle: Some("Toggle beta and experimental features.".to_string()),
             footer_hint: Some(standard_popup_hint_line()),
             items,
             ..Default::default()
@@ -3855,6 +4303,79 @@ impl ChatWidget {
         }
     }
 
+    /// Handle the /remember command to save something to memory.
+    fn handle_remember_command(&mut self, text: &str) {
+        if text.trim().is_empty() {
+            self.add_info_message(
+                "Usage: /remember <text to remember>".to_string(),
+                Some("Save facts, decisions, or lessons to persistent memory.".to_string()),
+            );
+        } else {
+            self.submit_op(Op::Remember {
+                text: text.to_string(),
+            });
+            self.add_info_message("Saving to memory...".to_string(), None);
+        }
+        self.request_redraw();
+    }
+
+    /// Handle the /memories command to show memory stats.
+    pub(crate) fn add_memories_output(&mut self) {
+        self.submit_op(Op::ListMemories);
+    }
+
+    /// Handle response from memory remember operation.
+    fn on_memory_remember_response(&mut self, resp: codex_protocol::protocol::MemoryRememberResponseEvent) {
+        if resp.success {
+            self.add_info_message(
+                format!("Memory saved (ID: {})", resp.memory_id.unwrap_or_default()),
+                None,
+            );
+        } else {
+            self.add_error_message(format!(
+                "Failed to save memory: {}",
+                resp.error.unwrap_or_else(|| "unknown error".to_string())
+            ));
+        }
+        self.request_redraw();
+    }
+
+    /// Handle response from memory list operation.
+    fn on_memory_list_response(&mut self, resp: codex_protocol::protocol::MemoryListResponseEvent) {
+        let mut lines = vec![format!("**Memories ({} total)**\n", resp.total_count)];
+
+        if !resp.counts_by_type.is_empty() {
+            lines.push("By type:".to_string());
+            for (mem_type, count) in &resp.counts_by_type {
+                lines.push(format!("  - {}: {}", mem_type, count));
+            }
+            lines.push(String::new());
+        }
+
+        if !resp.recent_memories.is_empty() {
+            lines.push("Recent memories:".to_string());
+            for mem in resp.recent_memories.iter().take(5) {
+                let content_preview = if mem.content.len() > 50 {
+                    format!("{}...", &mem.content[..50])
+                } else {
+                    mem.content.clone()
+                };
+                lines.push(format!(
+                    "  [{}] {} (importance: {:.2})",
+                    mem.memory_type, content_preview, mem.importance
+                ));
+            }
+            lines.push(String::new());
+        }
+
+        if let Some(path) = &resp.storage_path {
+            lines.push(format!("Storage: {}", path));
+        }
+
+        self.add_info_message(lines.join("\n"), None);
+        self.request_redraw();
+    }
+
     /// Forward file-search results to the bottom pane.
     pub(crate) fn apply_file_search_result(&mut self, query: String, matches: Vec<FileMatch>) {
         self.bottom_pane.on_file_search_result(query, matches);
@@ -4160,6 +4681,7 @@ enum Notification {
     ExecApprovalRequested { command: String },
     EditApprovalRequested { cwd: PathBuf, changes: Vec<PathBuf> },
     ElicitationRequested { server_name: String },
+    TerminalCompleted { name: String, exit_code: i32 },
 }
 
 impl Notification {
@@ -4186,6 +4708,13 @@ impl Notification {
             Notification::ElicitationRequested { server_name } => {
                 format!("Approval requested by {server_name}")
             }
+            Notification::TerminalCompleted { name, exit_code } => {
+                if *exit_code == 0 {
+                    format!("Terminal '{}' completed successfully", name)
+                } else {
+                    format!("Terminal '{}' failed (exit {})", name, exit_code)
+                }
+            }
         }
     }
 
@@ -4195,6 +4724,7 @@ impl Notification {
             Notification::ExecApprovalRequested { .. }
             | Notification::EditApprovalRequested { .. }
             | Notification::ElicitationRequested { .. } => "approval-requested",
+            Notification::TerminalCompleted { .. } => "terminal-completed",
         }
     }
 
@@ -4667,6 +5197,25 @@ fn rate_limit_footer_summary(snapshot: &RateLimitSnapshotDisplay) -> Option<Stri
         None
     } else {
         Some(parts.join(" · "))
+    }
+}
+
+/// Returns a human-readable description for a feature.
+fn feature_description(feature: codex_core::features::Feature) -> &'static str {
+    use codex_core::features::Feature;
+    match feature {
+        Feature::GhostCommit => "Create ghost commits at each turn for undo support",
+        Feature::UnifiedExec => "Run long-running commands in background terminals",
+        Feature::RmcpClient => "Enable experimental RMCP features such as OAuth login",
+        Feature::ApplyPatchFreeform => "Include the freeform apply_patch tool",
+        Feature::ViewImageTool => "Include the view_image tool for image viewing",
+        Feature::WebSearchRequest => "Allow the model to request web searches",
+        Feature::ExecPolicy => "Gate the execpolicy enforcement for shell commands",
+        Feature::SandboxCommandAssessment => "Enable model-based risk assessments for sandboxed commands",
+        Feature::WindowsSandbox => "Enable Windows sandbox (restricted token)",
+        Feature::RemoteCompaction => "Remote compaction enabled (ChatGPT auth only)",
+        Feature::ParallelToolCalls => "Allow model to call multiple tools in parallel",
+        Feature::ShellTool => "Enable the default shell tool",
     }
 }
 

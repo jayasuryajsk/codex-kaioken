@@ -1129,6 +1129,11 @@ impl AuthManager {
         self.inner.read().ok().and_then(|c| c.auth.clone())
     }
 
+    /// Returns the codex home directory path.
+    pub fn codex_home(&self) -> &PathBuf {
+        &self.codex_home
+    }
+
     /// Force a reload of the auth information from auth.json. Returns
     /// whether the auth value changed.
     pub fn reload(&self) -> bool {

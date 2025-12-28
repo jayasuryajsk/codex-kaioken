@@ -320,7 +320,9 @@ async fn run_codex_tool_session_inner(
                     | EventMsg::UndoCompleted(_)
                     | EventMsg::ExitedReviewMode(_)
                     | EventMsg::ContextCompacted(_)
-                    | EventMsg::DeprecationNotice(_) => {
+                    | EventMsg::DeprecationNotice(_)
+                    | EventMsg::MemoryRememberResponse(_)
+                    | EventMsg::MemoryListResponse(_) => {
                         // For now, we do not do anything extra for these
                         // events. Note that
                         // send(codex_event_to_notification(&event)) above has

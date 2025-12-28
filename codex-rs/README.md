@@ -1,18 +1,50 @@
 # Codex Kaioken
 
-Codex Kaioken is a fork of OpenAI’s Codex CLI that focuses on aggressive UX upgrades, multi-agent workflows, and tight integration with developer tooling. The Rust workspace that powers the CLI lives in [`codex-rs/`](./codex-rs), and every binary built from this repo ships as `codex-kaioken` to avoid clashing with upstream `codex`.
+Codex Kaioken is a fork of OpenAI's Codex CLI that focuses on aggressive UX upgrades, multi-agent workflows, persistent memory, and tight integration with developer tooling. The Rust workspace that powers the CLI lives in [`codex-rs/`](./codex-rs), and every binary built from this repo ships as `codex-kaioken` to avoid clashing with upstream `codex`.
 
-> **Why “Kaioken”?** It’s a fork of Codex that layers on aggressive UX polish and orchestration so the CLI feels faster and more autonomous out of the box.
+> **Why "Kaioken"?** It's a fork of Codex that layers on aggressive UX polish, persistent learning, and orchestration so the CLI feels faster and more autonomous out of the box.
 
 ## Highlights
 
-- **Plan-first workflow** – toggle plan mode with `/plan` or <kbd>Shift</kbd>+<kbd>Tab</kbd>. The composer turns cyan while your next request is converted into a checklist, and `/settings` lets you choose coarse, detailed, or auto plan granularity.
-- **Session settings palette** – quickly toggle plan detail, rate-limit footer visibility, and subagent concurrency (1–8 helpers) from `/settings` instead of hand-editing `config.toml`.
-- **Real-time subagent UI** – helper agents stream their tool calls, diffs, and reasoning in dedicated panes so you can see exactly what each agent is doing.
-- **Parallel orchestration** – the main session automatically spins up specialized subagents for exploration, execution, or research tasks, and gathers their output back into the primary transcript.
-- **Semantic search tool** – when [`sgrep`](https://github.com/Rika-Labs/sgrep) is on `PATH`, Kaioken exposes a `semantic_search` tool for fast ranked code lookups.
-- **Snapshot-aware undo & checkpoints** – `/undo` restores the last ghost snapshot, and `/checkpoint save|list|restore` lets you capture and jump to your own save points without touching git history. The inline status indicator now clears the moment a checkpoint completes, so you never get stuck watching a phantom spinner.
-- **MCP + sandbox tooling** – everything from upstream Codex (execpolicy, MCP client/server, approvals, sandbox helpers) remains available, but tuned for the Kaioken workflow.
+### Persistent Memory System
+
+Kaioken features a state-of-the-art memory system that enables the agent to learn and remember across sessions:
+
+- **Auto-learning** – Automatically extracts knowledge from file reads, edits, and command executions
+- **Mistake tracking** – Remembers failed commands and how they were fixed, so the same mistakes aren't repeated
+- **Codebase awareness** – Knows where things are in your project (auth code, tests, configs, etc.)
+- **Tool-based access** – The agent uses `memory_recall` and `memory_save` tools to access memories on-demand
+- **Smart decay** – Lessons and decisions never decay; other memories fade over time if unused
+
+**Memory Types:**
+| Type | Description | Example | Decay |
+|------|-------------|---------|-------|
+| `LESSON` | Learned from mistakes | "Must mock Redis before running tests" | Never |
+| `DECISION` | Why choices were made | "Chose Axum over Actix for simpler async" | Never |
+| `PREFERENCE` | User's coding style | "Prefers explicit error handling" | Slow |
+| `PATTERN` | Recurring code patterns | "Tests go in `__tests__` folders" | Reinforced |
+| `LOCATION` | Where things are | "Auth code in `src/auth/`" | Slow |
+| `FACT` | Codebase knowledge | "Project uses React 18" | Slow |
+
+Memories are stored per-project in `.kaioken/memory/` and persist across sessions.
+
+### Multi-Agent Orchestration
+
+- **Real-time subagent UI** – Helper agents stream their tool calls, diffs, and reasoning in dedicated panes so you can see exactly what each agent is doing.
+- **Parallel orchestration** – The main session automatically spins up specialized subagents for exploration, execution, or research tasks, and gathers their output back into the primary transcript.
+- **No timeout by default** – Subagents run without artificial time limits, allowing complex tasks to complete naturally.
+
+### Planning & Workflow
+
+- **Plan-first workflow** – Toggle plan mode with `/plan` or <kbd>Shift</kbd>+<kbd>Tab</kbd>. The composer turns cyan while your next request is converted into a checklist, and `/settings` lets you choose coarse, detailed, or auto plan granularity.
+- **Session settings palette** – Quickly toggle plan detail, rate-limit footer visibility, and subagent concurrency (1–8 helpers) from `/settings` instead of hand-editing `config.toml`.
+- **Snapshot-aware undo & checkpoints** – `/undo` restores the last ghost snapshot, and `/checkpoint save|list|restore` lets you capture and jump to your own save points without touching git history.
+
+### Search & Tools
+
+- **Semantic search tool** – When [`sgrep`](https://github.com/Rika-Labs/sgrep) is on `PATH`, Kaioken exposes a `semantic_search` tool for fast ranked code lookups.
+- **MCP + sandbox tooling** – Everything from upstream Codex (execpolicy, MCP client/server, approvals, sandbox helpers) remains available, but tuned for the Kaioken workflow.
+- **Generous timeouts** – Shell commands (5 min), MCP tools (10 min), and search operations have sensible defaults that don't interrupt long-running tasks.
 
 ## Quick start
 

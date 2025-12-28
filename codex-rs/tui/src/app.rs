@@ -898,6 +898,26 @@ impl App {
             AppEvent::OpenApprovalsPopup => {
                 self.chat_widget.open_approvals_popup();
             }
+            AppEvent::ToggleFeature { key, enabled } => {
+                // Toggle the feature in config and show confirmation
+                if let Some(feature) = codex_core::features::feature_for_key_public(&key) {
+                    if enabled {
+                        self.config.features.enable(feature);
+                    } else {
+                        self.config.features.disable(feature);
+                    }
+                    let status = if enabled { "enabled" } else { "disabled" };
+                    self.chat_widget.add_info_message(
+                        format!("Feature '{}' {}. Restart for full effect.", key, status),
+                        Some("Note: Some features require a restart to take effect.".to_string()),
+                    );
+                } else {
+                    self.chat_widget.add_error_message(format!("Unknown feature: {}", key));
+                }
+            }
+            AppEvent::KillTerminal { call_id } => {
+                self.chat_widget.kill_terminal(call_id);
+            }
             AppEvent::OpenReviewBranchPicker(cwd) => {
                 self.chat_widget.show_review_branch_picker(&cwd).await;
             }
@@ -1267,6 +1287,7 @@ mod tests {
                 semantic_status: SemanticStatus::Ready,
                 semantic_message: None,
                 checkpoint_names: Vec::new(),
+                memory_count: 0,
             };
             Arc::new(new_session_info(
                 app.chat_widget.config_ref(),

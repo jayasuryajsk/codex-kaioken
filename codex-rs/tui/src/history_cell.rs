@@ -34,10 +34,8 @@ use codex_core::protocol::CheckpointEntry;
 use codex_core::protocol::FileChange;
 use codex_core::protocol::McpAuthStatus;
 use codex_core::protocol::McpInvocation;
-use codex_core::protocol::SandboxPolicy;
 use codex_core::protocol::SessionConfiguredEvent;
 use codex_core::protocol::SubagentTaskStatus;
-use codex_core::protocol_config_types::ReasoningEffort as ReasoningEffortConfig;
 use codex_protocol::plan_tool::PlanItemArg;
 use codex_protocol::plan_tool::StepStatus;
 use codex_protocol::plan_tool::UpdatePlanArgs;
@@ -62,7 +60,6 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::Duration;
 use std::time::Instant;
-use textwrap::Options;
 use tracing::error;
 use unicode_width::UnicodeWidthStr;
 
@@ -492,19 +489,6 @@ impl HistoryCell for CompletedMcpToolCallWithImageOutput {
     }
 }
 
-pub(crate) fn card_inner_width(width: u16, max_inner_width: usize) -> Option<usize> {
-    if width < 4 {
-        return None;
-    }
-    let inner_width = std::cmp::min(width.saturating_sub(4) as usize, max_inner_width);
-    Some(inner_width)
-}
-
-/// Render `lines` inside a border sized to the widest span in the content.
-pub(crate) fn with_border(lines: Vec<Line<'static>>) -> Vec<Line<'static>> {
-    with_border_internal(lines, None)
-}
-
 /// Render `lines` inside a border whose inner width is at least `inner_width`.
 ///
 /// This is useful when callers have already clamped their content to a
@@ -570,10 +554,12 @@ pub(crate) fn padded_emoji(emoji: &str) -> String {
 pub struct SessionInfoCell(CompositeHistoryCell);
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Fields reserved for future header enhancements
 pub(crate) struct WelcomeSnapshot {
     pub semantic_status: SemanticStatus,
     pub semantic_message: Option<String>,
     pub checkpoint_names: Vec<String>,
+    pub memory_count: usize,
 }
 
 impl HistoryCell for SessionInfoCell {
@@ -598,47 +584,22 @@ pub(crate) fn new_session_info(
 ) -> SessionInfoCell {
     let SessionConfiguredEvent {
         model,
-        reasoning_effort,
         approval_policy,
-        sandbox_policy,
         cwd,
         ..
     } = event;
 
     SessionInfoCell(if is_first_event {
-        let mut mcp_servers: Vec<String> = config.mcp_servers.keys().cloned().collect();
-        mcp_servers.sort();
-        let writable_roots: Vec<PathBuf> = sandbox_policy
-            .get_writable_roots_with_cwd(&cwd)
-            .into_iter()
-            .map(|root| root.root)
-            .collect();
         let header = SessionHeaderHistoryCell::new(
             model,
-            reasoning_effort,
             cwd,
             approval_policy,
-            sandbox_policy,
-            mcp_servers,
-            writable_roots,
             snapshot,
             display_version(),
         );
 
-        let help_lines: Vec<Line<'static>> = vec![
-            "Next actions:".bold().into(),
-            "  • Launch helper subagents for focused exploration or edits.".into(),
-            "  • Run /review to inspect pending git changes.".into(),
-            "  • Use /checkpoint save|restore to manage checkpoints.".into(),
-            "  • Adjust approvals or sandbox policies with /approvals.".into(),
-            "  • Update AGENTS.md guidance (rerun /init if needed).".into(),
-        ];
-
         CompositeHistoryCell {
-            parts: vec![
-                Box::new(header),
-                Box::new(PlainHistoryCell { lines: help_lines }),
-            ],
+            parts: vec![Box::new(header)],
         }
     } else if config.model == model {
         CompositeHistoryCell { parts: vec![] }
@@ -662,15 +623,9 @@ pub(crate) fn new_user_prompt(message: String) -> UserHistoryCell {
 struct SessionHeaderHistoryCell {
     version: String,
     model: String,
-    reasoning_effort: Option<ReasoningEffortConfig>,
     directory: PathBuf,
     approval_policy: AskForApproval,
-    sandbox_policy: SandboxPolicy,
-    mcp_servers: Vec<String>,
-    writable_roots: Vec<PathBuf>,
-    semantic_status: SemanticStatus,
-    semantic_message: Option<String>,
-    checkpoint_names: Vec<String>,
+    memory_count: usize,
     git_summary: GitSummary,
 }
 
@@ -684,12 +639,8 @@ struct GitSummary {
 impl SessionHeaderHistoryCell {
     fn new(
         model: String,
-        reasoning_effort: Option<ReasoningEffortConfig>,
         directory: PathBuf,
         approval_policy: AskForApproval,
-        sandbox_policy: SandboxPolicy,
-        mcp_servers: Vec<String>,
-        writable_roots: Vec<PathBuf>,
         snapshot: WelcomeSnapshot,
         version: &str,
     ) -> Self {
@@ -697,15 +648,9 @@ impl SessionHeaderHistoryCell {
         Self {
             version: version.to_string(),
             model,
-            reasoning_effort,
             directory,
             approval_policy,
-            sandbox_policy,
-            mcp_servers,
-            writable_roots,
-            semantic_status: snapshot.semantic_status,
-            semantic_message: snapshot.semantic_message,
-            checkpoint_names: snapshot.checkpoint_names.into_iter().take(3).collect(),
+            memory_count: snapshot.memory_count,
             git_summary,
         }
     }
@@ -736,171 +681,63 @@ impl SessionHeaderHistoryCell {
 
         formatted
     }
-
-    fn reasoning_label(&self) -> Option<&'static str> {
-        self.reasoning_effort.map(|effort| match effort {
-            ReasoningEffortConfig::Minimal => "minimal",
-            ReasoningEffortConfig::Low => "low",
-            ReasoningEffortConfig::Medium => "medium",
-            ReasoningEffortConfig::High => "high",
-            ReasoningEffortConfig::XHigh => "xhigh",
-            ReasoningEffortConfig::None => "none",
-        })
-    }
-
-    fn left_column_entries(&self) -> Vec<String> {
-        vec![
-            format!(
-                "• Branch: {}",
-                self.git_summary
-                    .branch
-                    .as_deref()
-                    .unwrap_or("not a git repo")
-            ),
-            format!(
-                "• Head: {}",
-                self.git_summary.head.as_deref().unwrap_or("n/a")
-            ),
-            format!(
-                "• Uncommitted changes: {}",
-                match self.git_summary.uncommitted {
-                    Some(0) => "clean".to_string(),
-                    Some(count) => format!("{count} files"),
-                    None => "unknown".to_string(),
-                }
-            ),
-            format!("• Approvals preset: {}", self.approval_policy),
-            format!(
-                "• Sandbox mode: {}",
-                summarize_sandbox_policy_label(&self.sandbox_policy)
-            ),
-        ]
-    }
-
-    fn right_column_entries(&self) -> Vec<String> {
-        vec![
-            format!("• Indexing: {}", self.indexing_summary()),
-            format!("• Checkpoints: {}", self.checkpoint_summary()),
-            format!("• MCP servers: {}", self.mcp_summary()),
-            format!("• Writable roots: {}", self.writable_roots_summary()),
-        ]
-    }
-
-    fn indexing_summary(&self) -> String {
-        match self.semantic_status {
-            SemanticStatus::Missing => "sgrep missing — install to enable indexing".to_string(),
-            SemanticStatus::Indexing => self
-                .semantic_message
-                .as_deref()
-                .map(|msg| format!("indexing ({msg})"))
-                .unwrap_or_else(|| "indexing…".to_string()),
-            SemanticStatus::Ready => self
-                .semantic_message
-                .as_deref()
-                .map(|msg| format!("ready ({msg})"))
-                .unwrap_or_else(|| "ready (auto-watch active)".to_string()),
-        }
-    }
-
-    fn checkpoint_summary(&self) -> String {
-        if self.checkpoint_names.is_empty() {
-            "none yet (use /checkpoint)".to_string()
-        } else {
-            self.checkpoint_names.join(", ")
-        }
-    }
-
-    fn mcp_summary(&self) -> String {
-        if self.mcp_servers.is_empty() {
-            "none configured".to_string()
-        } else {
-            self.mcp_servers.join(", ")
-        }
-    }
-
-    fn writable_roots_summary(&self) -> String {
-        if self.writable_roots.is_empty() {
-            return "workspace root only".to_string();
-        }
-        let mut formatted: Vec<String> = self
-            .writable_roots
-            .iter()
-            .map(|path| Self::format_directory_inner(path, Some(24)))
-            .collect();
-        if formatted.len() > 3 {
-            let extra = formatted.len() - 3;
-            formatted.truncate(3);
-            formatted.push(format!("+{extra} more"));
-        }
-        formatted.join(", ")
-    }
-
-    fn render_columns(&self, inner_width: usize) -> Vec<Line<'static>> {
-        const GAP: usize = 4;
-        if inner_width <= GAP * 2 {
-            let mut merged = self.left_column_entries();
-            merged.push(String::new());
-            merged.extend(self.right_column_entries());
-            return wrap_entries(&merged, inner_width, true)
-                .into_iter()
-                .map(Line::from)
-                .collect();
-        }
-
-        let col_width = (inner_width.saturating_sub(GAP)) / 2;
-        let left_entries = self.left_column_entries();
-        let right_entries = self.right_column_entries();
-        let left_lines = wrap_entries(&left_entries, col_width, false);
-        let right_lines = wrap_entries(&right_entries, col_width, false);
-        combine_columns(left_lines, right_lines, col_width, GAP)
-    }
 }
 
 impl HistoryCell for SessionHeaderHistoryCell {
     fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
-        let dynamic_max = width.saturating_sub(4) as usize;
-        let Some(inner_width) = card_inner_width(width, dynamic_max) else {
+        // Compact format:
+        // ┌─ Kaioken v0.1.7 ─────────────────────────────────────┐
+        // │  gpt-5.1-codex-max · main:7379061d · clean           │
+        // │  ~/codex-kaioken · suggest · 23 memories loaded      │
+        // └──────────────────────────────────────────────────────┘
+
+        let inner_width = width.saturating_sub(4) as usize;
+        if inner_width < 20 {
             return Vec::new();
+        }
+
+        // Build git info string: "main:7379061d · clean" or "main:7379061d · 3 changes"
+        let branch = self.git_summary.branch.as_deref().unwrap_or("no-branch");
+        let head = self.git_summary.head.as_deref().unwrap_or("-------");
+        let status = match self.git_summary.uncommitted {
+            Some(0) => "clean".to_string(),
+            Some(n) => format!("{n} changes"),
+            None => "unknown".to_string(),
         };
 
-        let make_row = |spans: Vec<Span<'static>>| Line::from(spans);
+        // Line 1: model · branch:head · status
+        let line1 = format!("{}  ·  {}:{}  ·  {}", self.model, branch, head, status);
 
-        let title_spans: Vec<Span<'static>> = vec![
-            Span::from(">_ ").dim(),
-            Span::from("Codex Kaioken").bold(),
-            Span::from("  ·  ").dim(),
-            Span::from(format!("v{}", self.version)).dim(),
-        ];
+        // Line 2: directory · approval · memories
+        let dir = self.format_directory(Some(30));
+        let approval = format!("{}", self.approval_policy);
+        let memories = if self.memory_count > 0 {
+            format!("{} memories", self.memory_count)
+        } else {
+            "no memories".to_string()
+        };
+        let line2 = format!("{}  ·  {}  ·  {}", dir, approval, memories);
 
-        const CHANGE_MODEL_HINT_COMMAND: &str = "/model";
-        const CHANGE_MODEL_HINT_EXPLANATION: &str = " to change";
-        let mut model_spans: Vec<Span<'static>> =
-            vec![Span::from("model: ").dim(), Span::from(self.model.clone())];
-        if let Some(reasoning) = self.reasoning_label() {
-            model_spans.push(Span::from(" "));
-            model_spans.push(Span::from(reasoning));
-        }
-        model_spans.push("   ".dim());
-        model_spans.push(CHANGE_MODEL_HINT_COMMAND.cyan());
-        model_spans.push(CHANGE_MODEL_HINT_EXPLANATION.dim());
+        // Build the title bar
+        let title = format!(" Kaioken v{} ", self.version);
+        let remaining = inner_width.saturating_sub(title.len() + 2);
+        let title_bar = format!("┌─{}{}┐", title, "─".repeat(remaining));
 
-        let dir_label = "directory:";
-        let dir_prefix = format!("{dir_label} ");
-        let dir_prefix_width = UnicodeWidthStr::width(dir_prefix.as_str());
-        let dir_max_width = inner_width.saturating_sub(dir_prefix_width);
-        let dir = self.format_directory(Some(dir_max_width));
-        let dir_spans = vec![Span::from(dir_prefix).dim(), Span::from(dir)];
+        // Build content lines with padding
+        let pad_line = |s: &str| {
+            let content_width = UnicodeWidthStr::width(s);
+            let padding = inner_width.saturating_sub(content_width);
+            format!("│  {}{} │", s, " ".repeat(padding))
+        };
 
-        let mut lines = vec![
-            make_row(title_spans),
-            make_row(Vec::new()),
-            make_row(model_spans),
-            make_row(dir_spans),
-            make_row(Vec::new()),
-        ];
-        lines.extend(self.render_columns(inner_width));
+        let bottom_bar = format!("└{}┘", "─".repeat(inner_width + 2));
 
-        with_border(lines)
+        vec![
+            Line::from(title_bar.dim()),
+            Line::from(pad_line(&line1)),
+            Line::from(pad_line(&line2)),
+            Line::from(bottom_bar.dim()),
+        ]
     }
 }
 
@@ -947,62 +784,6 @@ fn git_status_count(directory: &Path) -> Option<usize> {
         Some(0)
     } else {
         Some(text.lines().count())
-    }
-}
-
-fn wrap_entries(entries: &[String], width: usize, include_spacing: bool) -> Vec<String> {
-    if width == 0 {
-        return Vec::new();
-    }
-    let mut lines = Vec::new();
-    for (idx, entry) in entries.iter().enumerate() {
-        let options = Options::new(width)
-            .subsequent_indent("  ")
-            .break_words(false);
-        let wrapped = textwrap::wrap(entry.as_str(), options);
-        for segment in wrapped {
-            lines.push(segment.to_string());
-        }
-        if include_spacing && idx + 1 < entries.len() {
-            lines.push(String::new());
-        }
-    }
-    lines
-}
-
-fn combine_columns(
-    left: Vec<String>,
-    right: Vec<String>,
-    col_width: usize,
-    gap: usize,
-) -> Vec<Line<'static>> {
-    let rows = left.len().max(right.len());
-    let gap_str = " ".repeat(gap);
-    let mut lines = Vec::new();
-    for idx in 0..rows {
-        let left_text = left.get(idx).map(std::string::String::as_str).unwrap_or("");
-        let right_text = right
-            .get(idx)
-            .map(std::string::String::as_str)
-            .unwrap_or("");
-        let left_width = UnicodeWidthStr::width(left_text);
-        let mut spans = Vec::new();
-        spans.push(Span::from(left_text.to_string()));
-        if col_width > left_width {
-            spans.push(Span::from(" ".repeat(col_width - left_width)));
-        }
-        spans.push(Span::from(gap_str.clone()));
-        spans.push(Span::from(right_text.to_string()));
-        lines.push(Line::from(spans));
-    }
-    lines
-}
-
-fn summarize_sandbox_policy_label(policy: &SandboxPolicy) -> &'static str {
-    match policy {
-        SandboxPolicy::DangerFullAccess => "danger-full-access",
-        SandboxPolicy::ReadOnly => "read-only",
-        SandboxPolicy::WorkspaceWrite { .. } => "workspace-write",
     }
 }
 
@@ -1748,12 +1529,11 @@ impl SubagentTasksCell {
         super::status_indicator_widget::fmt_elapsed_compact(elapsed.as_secs())
     }
 
-    fn status_span(&self, task: &SubagentTaskState) -> Span<'static> {
+    fn status_color(&self, task: &SubagentTaskState) -> ratatui::style::Color {
         match task.status {
-            SubagentTaskStatus::Running => spinner(Some(task.started_at), self.animations_enabled),
-            SubagentTaskStatus::Done => "DONE".green().bold(),
-            SubagentTaskStatus::Timeout => "TIMEOUT".red().bold(),
-            SubagentTaskStatus::Failed => "FAILED".red().bold(),
+            SubagentTaskStatus::Running => ratatui::style::Color::Cyan,
+            SubagentTaskStatus::Done => ratatui::style::Color::Green,
+            SubagentTaskStatus::Timeout | SubagentTaskStatus::Failed => ratatui::style::Color::Red,
         }
     }
 }
@@ -1765,71 +1545,132 @@ impl HistoryCell for SubagentTasksCell {
         }
 
         let mut lines: Vec<Line<'static>> = Vec::new();
-        lines.push(vec!["Subagents".bold()].into());
+        let box_width = (width as usize).saturating_sub(2).max(20);
 
-        for task in &self.tasks {
+        for (task_idx, task) in self.tasks.iter().enumerate() {
+            if task_idx > 0 {
+                // Add spacing between boxes
+                lines.push(Line::from(""));
+            }
+
             let elapsed = task
                 .finished_at
                 .unwrap_or_else(Instant::now)
                 .saturating_duration_since(task.started_at);
             let elapsed_display = Self::pretty_elapsed(elapsed);
             let label = task.label.as_deref().unwrap_or(task.name.as_str());
-            let spans: Vec<Span<'static>> = vec![
-                "  ".into(),
-                self.status_span(task),
-                " ".into(),
-                label.to_string().bold(),
-                " ".into(),
-                elapsed_display.dim(),
-            ];
-            lines.push(spans.clone().into());
+            let border_color = self.status_color(task);
 
-            lines.extend(task_detail_lines(task, width));
+            // Build top border: ┌─ name ───────────── status time ─┐
+            let status_part = format!(" {} {} ", self.status_text(task), elapsed_display);
+            let name_part = format!(" {} ", label);
+            let fixed_len = 2 + name_part.len() + status_part.len() + 2; // ┌─ + name + status + ─┐
+            let fill_len = box_width.saturating_sub(fixed_len);
+            let fill = "─".repeat(fill_len);
+
+            lines.push(Line::from(vec![
+                "┌─".fg(border_color),
+                Span::styled(name_part, ratatui::style::Style::default().bold().fg(border_color)),
+                fill.clone().fg(border_color),
+                Span::styled(status_part, ratatui::style::Style::default().fg(border_color)),
+                "─┐".fg(border_color),
+            ]));
+
+            // Content lines
+            let content_lines = task_box_content(task, box_width.saturating_sub(4), self.animations_enabled);
+            if content_lines.is_empty() {
+                // Empty box - show waiting message for running tasks
+                if matches!(task.status, SubagentTaskStatus::Running) {
+                    let msg = "Working...";
+                    let padding = box_width.saturating_sub(msg.len() + 4);
+                    lines.push(Line::from(vec![
+                        "│ ".fg(border_color),
+                        msg.dim().italic(),
+                        " ".repeat(padding).into(),
+                        " │".fg(border_color),
+                    ]));
+                }
+            } else {
+                for content_line in content_lines {
+                    let line_text = spans_to_string(&content_line);
+                    let text_len = line_text.chars().count();
+                    let padding = box_width.saturating_sub(text_len + 4);
+                    let mut spans = vec!["│ ".fg(border_color)];
+                    spans.extend(content_line);
+                    spans.push(" ".repeat(padding).into());
+                    spans.push(" │".fg(border_color));
+                    lines.push(Line::from(spans));
+                }
+            }
+
+            // Bottom border: └─────────────────────────────────────┘
+            let bottom_fill = "─".repeat(box_width.saturating_sub(2));
+            lines.push(Line::from(vec![
+                "└".fg(border_color),
+                bottom_fill.fg(border_color),
+                "┘".fg(border_color),
+            ]));
         }
 
         lines
     }
 }
 
+impl SubagentTasksCell {
+    fn status_text(&self, task: &SubagentTaskState) -> &'static str {
+        match task.status {
+            SubagentTaskStatus::Running => "⠋",
+            SubagentTaskStatus::Done => "✓",
+            SubagentTaskStatus::Timeout => "⏱",
+            SubagentTaskStatus::Failed => "✗",
+        }
+    }
+}
+
 const MAX_SUBAGENT_DETAIL_LINES: usize = 5;
 
-fn task_detail_lines(task: &SubagentTaskState, width: u16) -> Vec<Line<'static>> {
-    let mut detail_lines: Vec<Line<'static>> = Vec::new();
-    let available = width.saturating_sub(4).max(1);
+fn spans_to_string(spans: &[Span<'_>]) -> String {
+    spans.iter().map(|s| s.content.as_ref()).collect()
+}
+
+fn task_box_content(task: &SubagentTaskState, max_width: usize, _animations_enabled: bool) -> Vec<Vec<Span<'static>>> {
+    let mut content_lines: Vec<Vec<Span<'static>>> = Vec::new();
     let entries: Vec<String> = task.log.clone();
 
-    if entries.is_empty() && matches!(task.status, SubagentTaskStatus::Running) {
-        return detail_lines;
+    // Show last N log entries
+    let overflow: &[String] = if entries.len() > MAX_SUBAGENT_DETAIL_LINES {
+        &entries[entries.len() - MAX_SUBAGENT_DETAIL_LINES..]
+    } else {
+        &entries
+    };
+
+    // Add "more" indicator if we truncated
+    if entries.len() > MAX_SUBAGENT_DETAIL_LINES {
+        content_lines.push(vec![format!("… {} more", entries.len() - MAX_SUBAGENT_DETAIL_LINES).dim()]);
     }
 
-    let (head, overflow) =
-        entries.split_at(entries.len().saturating_sub(MAX_SUBAGENT_DETAIL_LINES));
-    if !head.is_empty() {
-        detail_lines.push(vec!["  ".into(), "… (more)".dim()].into());
-    }
-
-    for (idx, entry) in overflow.iter().enumerate() {
-        let connector = if idx + 1 == overflow.len() {
-            "└─"
-        } else {
-            "├─"
-        };
-        let rendered = render_markdown_text_with_width(entry, Some(available as usize));
-        for (line_idx, line) in rendered.lines.iter().enumerate() {
-            let mut spans = Vec::new();
-            if line_idx == 0 {
-                spans.push("  ".into());
-                spans.push(connector.cyan());
-                spans.push(" ".into());
-            } else {
-                spans.push("    ".into());
-            }
-            spans.extend(line.spans.iter().cloned());
-            detail_lines.push(Line::from(spans));
+    for entry in overflow {
+        let rendered = render_markdown_text_with_width(entry, Some(max_width));
+        for line in rendered.lines {
+            content_lines.push(line.spans.into_iter().map(|s| {
+                Span::styled(s.content.into_owned(), s.style)
+            }).collect());
         }
     }
 
-    detail_lines
+    // If task is done and has a summary, show it
+    if let Some(summary) = &task.summary {
+        if !summary.is_empty() && content_lines.is_empty() {
+            let rendered = render_markdown_text_with_width(summary, Some(max_width));
+            for line in rendered.lines {
+                content_lines.push(line.spans.into_iter().map(|s| {
+                    Span::styled(s.content.into_owned(), s.style)
+                }).collect());
+            }
+        }
+    }
+
+    content_lines
 }
 
 pub(crate) fn new_reasoning_summary_block(
@@ -2272,32 +2113,30 @@ mod tests {
     }
 
     #[test]
-    fn session_header_includes_reasoning_level_when_present() {
+    fn session_header_compact_format() {
         let snapshot = WelcomeSnapshot {
             semantic_status: SemanticStatus::Ready,
             semantic_message: None,
             checkpoint_names: Vec::new(),
+            memory_count: 5,
         };
         let cell = SessionHeaderHistoryCell::new(
             "gpt-4o".to_string(),
-            Some(ReasoningEffortConfig::High),
             std::env::temp_dir(),
             AskForApproval::Never,
-            SandboxPolicy::ReadOnly,
-            Vec::new(),
-            Vec::new(),
             snapshot,
-            "test",
+            "0.1.7",
         );
 
         let lines = render_lines(&cell.display_lines(80));
-        let model_line = lines
-            .into_iter()
-            .find(|line| line.contains("model:"))
-            .expect("model line");
+        let output = lines.join("\n");
 
-        assert!(model_line.contains("gpt-4o high"));
-        assert!(model_line.contains("/model to change"));
+        // Should contain version in title bar
+        assert!(output.contains("Kaioken v0.1.7"));
+        // Should contain model name
+        assert!(output.contains("gpt-4o"));
+        // Should show memory count
+        assert!(output.contains("5 memories"));
     }
 
     #[test]

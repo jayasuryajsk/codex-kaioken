@@ -23,6 +23,15 @@ pub(crate) struct FooterProps {
     pub(crate) semantic_spinner: char,
     pub(crate) semantic_message: Option<String>,
     pub(crate) rate_limit_summary: Option<String>,
+    /// Count of running and finished background terminals
+    pub(crate) terminal_count: TerminalCount,
+}
+
+/// Background terminal counts for footer display
+#[derive(Clone, Debug, Default)]
+pub(crate) struct TerminalCount {
+    pub(crate) running: usize,
+    pub(crate) finished: usize,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -92,6 +101,7 @@ fn footer_lines(props: &FooterProps) -> Vec<Line<'static>> {
                 props.semantic_spinner,
                 &props.semantic_message,
                 &props.rate_limit_summary,
+                &props.terminal_count,
             );
             line.push_span(" · ".dim());
             line.extend(vec![
@@ -111,6 +121,7 @@ fn footer_lines(props: &FooterProps) -> Vec<Line<'static>> {
             props.semantic_spinner,
             &props.semantic_message,
             &props.rate_limit_summary,
+            &props.terminal_count,
         )],
     }
 }
@@ -244,6 +255,7 @@ fn context_window_line(
     spinner: char,
     message: &Option<String>,
     rate_limit_summary: &Option<String>,
+    terminal_count: &TerminalCount,
 ) -> Line<'static> {
     let percent = percent.unwrap_or(100).clamp(0, 100);
     let mut spans = vec![Span::from(format!("{percent}% context left")).dim()];
@@ -255,7 +267,32 @@ fn context_window_line(
         spans.push(" · ".dim());
         spans.push(Span::from(summary.clone()).dim());
     }
+    // Show terminal indicator if there are any terminals
+    if terminal_count.running > 0 || terminal_count.finished > 0 {
+        spans.push(" · ".dim());
+        spans.push(terminal_status_span(terminal_count));
+    }
     Line::from(spans)
+}
+
+fn terminal_status_span(count: &TerminalCount) -> Span<'static> {
+    use ratatui::style::Color;
+    if count.running > 0 && count.finished > 0 {
+        Span::styled(
+            format!("⬤ {} ✓ {}", count.running, count.finished),
+            ratatui::style::Style::default().fg(Color::Cyan),
+        )
+    } else if count.running > 0 {
+        Span::styled(
+            format!("⬤ {}", count.running),
+            ratatui::style::Style::default().fg(Color::Cyan),
+        )
+    } else {
+        Span::styled(
+            format!("✓ {}", count.finished),
+            ratatui::style::Style::default().fg(Color::Green),
+        )
+    }
 }
 
 fn semantic_search_status_span(
@@ -454,6 +491,7 @@ mod tests {
                 semantic_spinner: '⠋',
                 semantic_message: None,
                 rate_limit_summary: None,
+                terminal_count: TerminalCount::default(),
             },
         );
 
@@ -469,6 +507,7 @@ mod tests {
                 semantic_spinner: '⠋',
                 semantic_message: None,
                 rate_limit_summary: None,
+                terminal_count: TerminalCount::default(),
             },
         );
 
@@ -484,6 +523,7 @@ mod tests {
                 semantic_spinner: '⠋',
                 semantic_message: None,
                 rate_limit_summary: None,
+                terminal_count: TerminalCount::default(),
             },
         );
 
@@ -499,6 +539,7 @@ mod tests {
                 semantic_spinner: '⠋',
                 semantic_message: None,
                 rate_limit_summary: None,
+                terminal_count: TerminalCount::default(),
             },
         );
 
@@ -514,6 +555,7 @@ mod tests {
                 semantic_spinner: '⠋',
                 semantic_message: None,
                 rate_limit_summary: None,
+                terminal_count: TerminalCount::default(),
             },
         );
 
@@ -529,6 +571,7 @@ mod tests {
                 semantic_spinner: '⠋',
                 semantic_message: None,
                 rate_limit_summary: None,
+                terminal_count: TerminalCount::default(),
             },
         );
 
@@ -544,6 +587,7 @@ mod tests {
                 semantic_spinner: '⠋',
                 semantic_message: None,
                 rate_limit_summary: None,
+                terminal_count: TerminalCount::default(),
             },
         );
     }

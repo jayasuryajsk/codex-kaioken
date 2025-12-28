@@ -64,9 +64,9 @@ pub mod edit;
 pub mod profile;
 pub mod types;
 
-pub const OPENAI_DEFAULT_MODEL: &str = "gpt-5.1-codex";
-const OPENAI_DEFAULT_REVIEW_MODEL: &str = "gpt-5.1-codex";
-pub const GPT_5_CODEX_MEDIUM_MODEL: &str = "gpt-5.1-codex";
+pub const OPENAI_DEFAULT_MODEL: &str = "gpt-5.2-codex";
+const OPENAI_DEFAULT_REVIEW_MODEL: &str = "gpt-5.2-codex";
+pub const GPT_5_CODEX_MEDIUM_MODEL: &str = "gpt-5.2-codex";
 
 /// Maximum number of bytes of the documentation that will be embedded. Larger
 /// files are *silently truncated* to this size so we do not take up too much of
@@ -165,6 +165,12 @@ pub struct Config {
 
     /// Enable ASCII animations and shimmer effects in the TUI.
     pub animations: bool,
+
+    /// Number of lines to scroll per arrow key press.
+    pub scroll_lines: u16,
+
+    /// Enable half-page scrolling with Page Up/Down.
+    pub scroll_half_page: bool,
 
     /// The directory that should be treated as the current working directory
     /// for the session. All relative paths inside the business-logic layer are
@@ -1276,6 +1282,8 @@ impl Config {
                 .unwrap_or(4)
                 .clamp(SUBAGENT_LIMIT_MIN, SUBAGENT_LIMIT_HARD_CAP),
             animations: cfg.tui.as_ref().map(|t| t.animations).unwrap_or(true),
+            scroll_lines: cfg.tui.as_ref().map(|t| t.scroll_lines).unwrap_or(3),
+            scroll_half_page: cfg.tui.as_ref().map(|t| t.scroll_half_page).unwrap_or(true),
             otel: {
                 let t: OtelConfigToml = cfg.otel.unwrap_or_default();
                 let log_user_prompt = t.log_user_prompt.unwrap_or(false);
@@ -3030,6 +3038,8 @@ model_verbosity = "high"
                 plan_detail: PlanDetailPreference::default(),
                 subagent_max_tasks: 4,
                 animations: true,
+                scroll_lines: 3,
+                scroll_half_page: true,
                 otel: OtelConfig::default(),
             },
             o3_profile_config
@@ -3106,6 +3116,8 @@ model_verbosity = "high"
             plan_detail: PlanDetailPreference::default(),
             subagent_max_tasks: 4,
             animations: true,
+            scroll_lines: 3,
+            scroll_half_page: true,
             otel: OtelConfig::default(),
         };
 
@@ -3197,6 +3209,8 @@ model_verbosity = "high"
             plan_detail: PlanDetailPreference::default(),
             subagent_max_tasks: 4,
             animations: true,
+            scroll_lines: 3,
+            scroll_half_page: true,
             otel: OtelConfig::default(),
         };
 
@@ -3274,6 +3288,8 @@ model_verbosity = "high"
             plan_detail: PlanDetailPreference::default(),
             subagent_max_tasks: 4,
             animations: true,
+            scroll_lines: 3,
+            scroll_half_page: true,
             otel: OtelConfig::default(),
         };
 

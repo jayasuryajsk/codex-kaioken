@@ -1,10 +1,12 @@
 use std::collections::VecDeque;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use codex_utils_string::take_bytes_at_char_boundary;
 use serde::Deserialize;
 
+use crate::codex::Session;
 use crate::function_tool::FunctionCallError;
 use crate::tools::context::ToolInvocation;
 use crate::tools::context::ToolOutput;
@@ -96,7 +98,7 @@ impl ToolHandler for ReadFileHandler {
     }
 
     async fn handle(&self, invocation: ToolInvocation) -> Result<ToolOutput, FunctionCallError> {
-        let ToolInvocation { payload, .. } = invocation;
+        let ToolInvocation { session, payload, .. } = invocation;
 
         let arguments = match payload {
             ToolPayload::Function { arguments } => arguments,
@@ -147,11 +149,29 @@ impl ToolHandler for ReadFileHandler {
                 indentation::read_block(&path, offset, limit, indentation).await?
             }
         };
+
+        let content = collected.join("\n");
+
+        // Extract memories from file read (non-blocking)
+        extract_file_read_memories(session, &path, &content);
+
         Ok(ToolOutput::Function {
-            content: collected.join("\n"),
+            content,
             content_items: None,
             success: Some(true),
         })
+    }
+}
+
+/// Spawn background task to extract memories from file read.
+fn extract_file_read_memories(session: Arc<Session>, path: &PathBuf, content: &str) {
+    if let Some(mm) = session.memory_manager() {
+        let mm = mm.clone();
+        let path = path.clone();
+        let content = content.to_string();
+        tokio::spawn(async move {
+            let _ = mm.on_file_read(&path, &content).await;
+        });
     }
 }
 

@@ -14,7 +14,9 @@ pub enum SlashCommand {
     // more frequently used commands should be listed first.
     Model,
     Approvals,
+    Experimental,
     Settings,
+    Skills,
     Plan,
     Review,
     New,
@@ -27,7 +29,11 @@ pub enum SlashCommand {
     Diff,
     Mention,
     Status,
+    Ps,
+    Kill,
     Mcp,
+    Remember,
+    Memories,
     Logout,
     Quit,
     Exit,
@@ -55,11 +61,17 @@ impl SlashCommand {
             SlashCommand::Diff => "show git diff (including untracked files)",
             SlashCommand::Mention => "mention a file",
             SlashCommand::Status => "show current session configuration and token usage",
+            SlashCommand::Ps => "list background terminals",
+            SlashCommand::Kill => "kill a background terminal (`/kill <id>`)",
             SlashCommand::Model => "choose what model and reasoning effort to use",
             SlashCommand::Approvals => "choose what Codex Kaioken can do without approval",
+            SlashCommand::Experimental => "toggle beta features",
             SlashCommand::Settings => "customize footer and other Kaioken UI defaults",
+            SlashCommand::Skills => "list and toggle available skills",
             SlashCommand::Plan => "toggle plan mode or review pending plans",
             SlashCommand::Mcp => "list configured MCP tools",
+            SlashCommand::Remember => "save something to memory (`/remember <text>`)",
+            SlashCommand::Memories => "show stored memories and stats",
             SlashCommand::Logout => "log out of Codex Kaioken",
             SlashCommand::Rollout => "print the rollout file path",
             SlashCommand::TestApproval => "test approval request",
@@ -89,14 +101,20 @@ impl SlashCommand {
             // are safe to run even while a task is executing.
             SlashCommand::Model
             | SlashCommand::Approvals
+            | SlashCommand::Experimental
             | SlashCommand::Settings
+            | SlashCommand::Skills
             | SlashCommand::Plan
             // All of the commands below already operated during tasks.
             | SlashCommand::Diff
             | SlashCommand::ListCheckpoints
             | SlashCommand::Mention
             | SlashCommand::Status
+            | SlashCommand::Ps
+            | SlashCommand::Kill
             | SlashCommand::Mcp
+            | SlashCommand::Remember
+            | SlashCommand::Memories
             | SlashCommand::Feedback
             | SlashCommand::Quit
             | SlashCommand::Exit

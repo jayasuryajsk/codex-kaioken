@@ -22,6 +22,6 @@ expression: term.backend().vt100().screen().contents()
   ↳ Hello, world! 16
 
 
-› Ask Codex Kaioken to do anything
+› Ask Kaioken anything
 
   100% context left · indexed · ? for shortcuts

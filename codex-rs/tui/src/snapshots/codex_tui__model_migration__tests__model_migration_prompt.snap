@@ -2,14 +2,13 @@
 source: tui/src/model_migration.rs
 expression: terminal.backend()
 ---
-> Codex Kaioken just got an upgrade. Introducing gpt-5.1-cod
+> Kaioken Model Upgrade Available
 
-  Codex Kaioken is now powered by gpt-5.1-codex-max, our
-  latest frontier agentic coding model. It is smarter and
-  faster than its predecessors and capable of long-running
-  project-scale work.
+  A newer model is available that offers improved
+  performance and capabilities.
 
-  Learn more at www.openai.com/index/gpt-5-1-codex-max.
+  You can continue using your current model by selecting
+  'Use existing model' below.
 
   Choose how you'd like Codex Kaioken to proceed.
 

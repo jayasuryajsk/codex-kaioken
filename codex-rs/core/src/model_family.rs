@@ -13,6 +13,9 @@ const BASE_INSTRUCTIONS: &str = include_str!("../prompt.md");
 const GPT_5_CODEX_INSTRUCTIONS: &str = include_str!("../gpt_5_codex_prompt.md");
 const GPT_5_1_INSTRUCTIONS: &str = include_str!("../gpt_5_1_prompt.md");
 const GPT_5_1_CODEX_MAX_INSTRUCTIONS: &str = include_str!("../gpt-5.1-codex-max_prompt.md");
+const GPT_5_2_INSTRUCTIONS: &str = include_str!("../gpt_5_2_prompt.md");
+const GPT_5_2_CODEX_INSTRUCTIONS: &str = include_str!("../gpt-5.2-codex_prompt.md");
+const GPT_5_2_CODEX_MAX_INSTRUCTIONS: &str = include_str!("../gpt-5.2-codex-max_prompt.md");
 
 /// A model family is a group of models that share certain characteristics.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -135,6 +138,14 @@ pub fn find_family_for_model(slug: &str) -> Option<ModelFamily> {
         model_family!(slug, "gpt-oss", apply_patch_tool_type: Some(ApplyPatchToolType::Function))
     } else if slug.starts_with("gpt-4o") {
         model_family!(slug, "gpt-4o", needs_special_apply_patch_instructions: true)
+    } else if slug.starts_with("o1") {
+        model_family!(
+            slug, "o1",
+            supports_reasoning_summaries: true,
+            needs_special_apply_patch_instructions: true,
+        )
+    } else if slug.starts_with("gpt-4-turbo") || slug.starts_with("gpt-4") {
+        model_family!(slug, "gpt-4", needs_special_apply_patch_instructions: true)
     } else if slug.starts_with("gpt-3.5") {
         model_family!(slug, "gpt-3.5", needs_special_apply_patch_instructions: true)
     } else if slug.starts_with("test-gpt-5") {
@@ -188,6 +199,45 @@ pub fn find_family_for_model(slug: &str) -> Option<ModelFamily> {
         )
 
     // Production models.
+    // GPT-5.2 family
+    } else if slug.starts_with("gpt-5.2-codex-max") {
+        model_family!(
+            slug, slug,
+            supports_reasoning_summaries: true,
+            reasoning_summary_format: ReasoningSummaryFormat::Experimental,
+            base_instructions: GPT_5_2_CODEX_MAX_INSTRUCTIONS.to_string(),
+            apply_patch_tool_type: Some(ApplyPatchToolType::Freeform),
+            shell_type: ConfigShellToolType::ShellCommand,
+            supports_parallel_tool_calls: true,
+            support_verbosity: false,
+            truncation_policy: TruncationPolicy::Tokens(10_000),
+        )
+    } else if slug.starts_with("gpt-5.2-codex") {
+        model_family!(
+            slug, slug,
+            supports_reasoning_summaries: true,
+            reasoning_summary_format: ReasoningSummaryFormat::Experimental,
+            base_instructions: GPT_5_2_CODEX_INSTRUCTIONS.to_string(),
+            apply_patch_tool_type: Some(ApplyPatchToolType::Freeform),
+            shell_type: ConfigShellToolType::ShellCommand,
+            supports_parallel_tool_calls: true,
+            support_verbosity: false,
+            truncation_policy: TruncationPolicy::Tokens(10_000),
+        )
+    } else if slug.starts_with("gpt-5.2") {
+        model_family!(
+            slug, "gpt-5.2",
+            supports_reasoning_summaries: true,
+            apply_patch_tool_type: Some(ApplyPatchToolType::Freeform),
+            support_verbosity: true,
+            default_verbosity: Some(Verbosity::Low),
+            base_instructions: GPT_5_2_INSTRUCTIONS.to_string(),
+            default_reasoning_effort: Some(ReasoningEffort::Medium),
+            truncation_policy: TruncationPolicy::Bytes(10_000),
+            shell_type: ConfigShellToolType::ShellCommand,
+            supports_parallel_tool_calls: true,
+        )
+    // GPT-5.1 family
     } else if slug.starts_with("gpt-5.1-codex-max") {
         model_family!(
             slug, slug,

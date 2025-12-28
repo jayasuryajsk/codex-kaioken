@@ -25,6 +25,7 @@ use super::command_popup::CommandPopup;
 use super::file_search_popup::FileSearchPopup;
 use super::footer::FooterMode;
 use super::footer::FooterProps;
+use super::footer::TerminalCount;
 use super::footer::esc_hint_mode;
 use super::footer::footer_height;
 use super::footer::render_footer;
@@ -122,6 +123,7 @@ pub(crate) struct ChatComposer {
     semantic_spinner_frame: char,
     semantic_message: Option<String>,
     rate_limit_summary: Option<String>,
+    terminal_count: TerminalCount,
 }
 
 /// Popup state – at most one can be visible at any time.
@@ -171,6 +173,7 @@ impl ChatComposer {
             semantic_spinner_frame: DEFAULT_SEMANTIC_SPINNER,
             semantic_message: None,
             rate_limit_summary: None,
+            terminal_count: TerminalCount::default(),
         };
         // Apply configuration via the setter to keep side-effects centralized.
         this.set_disable_paste_burst(disable_paste_burst);
@@ -1420,6 +1423,7 @@ impl ChatComposer {
             semantic_spinner: self.semantic_spinner_frame,
             semantic_message: self.semantic_message.clone(),
             rate_limit_summary: self.rate_limit_summary.clone(),
+            terminal_count: self.terminal_count.clone(),
         }
     }
 
@@ -1579,6 +1583,10 @@ impl ChatComposer {
         }
         self.rate_limit_summary = summary;
         true
+    }
+
+    pub(crate) fn set_terminal_count(&mut self, running: usize, finished: usize) {
+        self.terminal_count = TerminalCount { running, finished };
     }
 
     pub(crate) fn set_esc_backtrack_hint(&mut self, show: bool) {
@@ -1766,7 +1774,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -1811,7 +1819,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
         assert!(composer.set_plan_mode_enabled(true));
@@ -1846,7 +1854,7 @@ mod tests {
             true,
             sender,
             enhanced_keys_supported,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
         setup(&mut composer);
@@ -1925,7 +1933,7 @@ mod tests {
             true,
             sender,
             true,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -1950,7 +1958,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -1976,7 +1984,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -2017,7 +2025,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -2191,7 +2199,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -2220,7 +2228,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -2249,7 +2257,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -2276,7 +2284,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -2311,7 +2319,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -2352,7 +2360,7 @@ mod tests {
                 true,
                 sender.clone(),
                 false,
-                "Ask Codex Kaioken to do anything".to_string(),
+                "Ask Kaioken anything".to_string(),
                 false,
             );
 
@@ -2395,7 +2403,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -2423,7 +2431,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
         type_chars_humanlike(&mut composer, &['/', 'm', 'o']);
@@ -2466,7 +2474,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -2519,7 +2527,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -2540,7 +2548,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -2576,7 +2584,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -2611,7 +2619,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -2690,7 +2698,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -2762,7 +2770,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -2810,7 +2818,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
         let path = PathBuf::from("/tmp/image1.png");
@@ -2834,7 +2842,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
         let path = PathBuf::from("/tmp/image2.png");
@@ -2859,7 +2867,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
         let path = PathBuf::from("/tmp/image3.png");
@@ -2900,7 +2908,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -2931,7 +2939,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -2988,7 +2996,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -3015,7 +3023,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -3051,7 +3059,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -3085,7 +3093,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -3123,7 +3131,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -3187,7 +3195,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -3223,7 +3231,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -3253,7 +3261,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -3303,7 +3311,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -3356,7 +3364,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -3393,7 +3401,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -3424,7 +3432,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -3460,7 +3468,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -3497,7 +3505,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -3535,7 +3543,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -3579,7 +3587,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 
@@ -3611,7 +3619,7 @@ mod tests {
             true,
             sender,
             false,
-            "Ask Codex Kaioken to do anything".to_string(),
+            "Ask Kaioken anything".to_string(),
             false,
         );
 

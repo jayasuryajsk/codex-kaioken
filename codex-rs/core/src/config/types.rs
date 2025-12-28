@@ -395,10 +395,25 @@ pub struct Tui {
     /// Maximum allowed concurrent subagent tasks.
     #[serde(default = "default_subagent_limit")]
     pub subagent_max_tasks: i64,
+
+    /// Number of lines to scroll per arrow key press.
+    /// Defaults to 3.
+    #[serde(default = "default_scroll_lines")]
+    pub scroll_lines: u16,
+
+    /// Enable half-page scrolling with Page Up/Down.
+    /// When false, Page Up/Down scrolls by a full page.
+    /// Defaults to `true`.
+    #[serde(default = "default_true")]
+    pub scroll_half_page: bool,
 }
 
 const fn default_true() -> bool {
     true
+}
+
+const fn default_scroll_lines() -> u16 {
+    3
 }
 
 /// Hard minimum number of allowed concurrent subagent tasks.

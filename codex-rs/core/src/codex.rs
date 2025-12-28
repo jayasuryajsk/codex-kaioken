@@ -569,6 +569,23 @@ impl Session {
         // Create the mutable state for the Session.
         let state = SessionState::new(session_configuration.clone());
 
+        // Initialize memory manager for persistent learning
+        let memory_manager = match crate::memory::MemoryManager::init(
+            &session_configuration.cwd,
+            crate::memory::MemoryConfig::default(),
+        )
+        .await
+        {
+            Ok(mm) => {
+                tracing::info!("Memory system initialized for session");
+                Some(Arc::new(mm))
+            }
+            Err(e) => {
+                tracing::warn!("Failed to initialize memory system: {}", e);
+                None
+            }
+        };
+
         let services = SessionServices {
             mcp_connection_manager: Arc::new(RwLock::new(McpConnectionManager::default())),
             mcp_startup_cancellation_token: CancellationToken::new(),
@@ -580,6 +597,7 @@ impl Session {
             auth_manager: Arc::clone(&auth_manager),
             otel_event_manager,
             tool_approvals: Mutex::new(ApprovalStore::default()),
+            memory_manager,
         };
 
         let sess = Arc::new(Session {
@@ -1101,6 +1119,11 @@ impl Session {
             self.user_shell().clone(),
         )));
         items
+    }
+
+    /// Get the memory manager if available.
+    pub(crate) fn memory_manager(&self) -> Option<&std::sync::Arc<crate::memory::MemoryManager>> {
+        self.services.memory_manager.as_ref()
     }
 
     pub(crate) async fn persist_rollout_items(&self, items: &[RolloutItem]) {
@@ -1641,6 +1664,16 @@ impl Session {
             .original_config_do_not_use
             .clone())
     }
+
+    pub async fn get_provider(&self) -> ModelProviderInfo {
+        let state = self.state.lock().await;
+        state.session_configuration.provider.clone()
+    }
+
+    pub async fn get_session_source(&self) -> codex_protocol::protocol::SessionSource {
+        let state = self.state.lock().await;
+        state.session_configuration.session_source.clone()
+    }
 }
 
 async fn submission_loop(sess: Arc<Session>, config: Arc<Config>, rx_sub: Receiver<Submission>) {
@@ -1738,6 +1771,12 @@ async fn submission_loop(sess: Arc<Session>, config: Arc<Config>, rx_sub: Receiv
             }
             Op::Review { review_request } => {
                 handlers::review(&sess, &config, sub.id.clone(), review_request).await;
+            }
+            Op::Remember { text } => {
+                handlers::remember(&sess, sub.id.clone(), text).await;
+            }
+            Op::ListMemories => {
+                handlers::list_memories(&sess, sub.id.clone()).await;
             }
             _ => {} // Ignore unknown ops; enum is non_exhaustive to allow extensions.
         }
@@ -2083,6 +2122,69 @@ mod handlers {
         )
         .await;
     }
+
+    pub async fn remember(sess: &Arc<Session>, sub_id: String, text: String) {
+        let (success, memory_id, error) = if let Some(mm) = sess.memory_manager() {
+            match mm.remember(&text).await {
+                Ok(memory) => (true, Some(memory.id), None),
+                Err(e) => (false, None, Some(e.to_string())),
+            }
+        } else {
+            (false, None, Some("Memory system not available".to_string()))
+        };
+
+        let event = Event {
+            id: sub_id,
+            msg: EventMsg::MemoryRememberResponse(
+                crate::protocol::MemoryRememberResponseEvent {
+                    success,
+                    memory_id,
+                    error,
+                },
+            ),
+        };
+        sess.send_event_raw(event).await;
+    }
+
+    pub async fn list_memories(sess: &Arc<Session>, sub_id: String) {
+        let (total_count, counts_by_type, recent_memories, storage_path) =
+            if let Some(mm) = sess.memory_manager() {
+                let stats = mm.stats().await.unwrap_or_default();
+                let summary = mm.summary().await;
+
+                let recent: Vec<crate::protocol::MemoryEntry> = summary
+                    .recent
+                    .into_iter()
+                    .map(|m| crate::protocol::MemoryEntry {
+                        id: m.id,
+                        memory_type: format!("{:?}", m.memory_type),
+                        content: m.content,
+                        importance: m.importance,
+                        use_count: m.use_count,
+                    })
+                    .collect();
+
+                (
+                    stats.total_count,
+                    stats.counts_by_type,
+                    recent,
+                    stats.storage_path,
+                )
+            } else {
+                (0, std::collections::HashMap::new(), Vec::new(), None)
+            };
+
+        let event = Event {
+            id: sub_id,
+            msg: EventMsg::MemoryListResponse(crate::protocol::MemoryListResponseEvent {
+                total_count,
+                counts_by_type,
+                recent_memories,
+                storage_path,
+            }),
+        };
+        sess.send_event_raw(event).await;
+    }
 }
 
 /// Spawn a review thread using the given prompt.
@@ -2229,20 +2331,24 @@ pub(crate) async fn run_task(
             .collect::<Vec<ResponseItem>>();
 
         // Construct the input that we will send to the model.
-        let turn_input: Vec<ResponseItem> = {
+        let mut turn_input: Vec<ResponseItem> = {
             sess.record_conversation_items(&turn_context, &pending_input)
                 .await;
             sess.clone_history().await.get_history_for_prompt()
         };
 
-        let turn_input_messages = turn_input
+        // Extract user messages for later use (notifications, memory extraction)
+        let turn_input_messages: Vec<String> = turn_input
             .iter()
             .filter_map(|item| match parse_turn_item(item) {
                 Some(TurnItem::UserMessage(user_message)) => Some(user_message),
                 _ => None,
             })
             .map(|user_message| user_message.message())
-            .collect::<Vec<String>>();
+            .collect();
+
+        // Memory is tool-based: model uses memory_recall/memory_save tools instead of injection.
+
         match run_turn(
             Arc::clone(&sess),
             Arc::clone(&turn_context),
@@ -2278,6 +2384,40 @@ pub(crate) async fn run_task(
                     last_agent_message = get_last_assistant_message_from_turn(
                         &items_to_record_in_conversation_history,
                     );
+
+                    // Spawn LLM memory extraction asynchronously
+                    if let Some(mm) = sess.memory_manager() {
+                        if mm.is_enabled() {
+                            let user_message = turn_input_messages.join("\n");
+                            let agent_response = last_agent_message.clone().unwrap_or_default();
+                            let mm = Arc::clone(mm);
+                            let sess_clone = Arc::clone(&sess);
+                            let otel = sess.services.otel_event_manager.clone();
+                            let auth = Arc::clone(&sess.services.auth_manager);
+                            let conv_id = sess.conversation_id;
+
+                            tokio::spawn(async move {
+                                if let Ok(config) = sess_clone.clone_original_config().await {
+                                    let provider = sess_clone.get_provider().await;
+                                    let session_source = sess_clone.get_session_source().await;
+                                    mm.on_turn_complete(
+                                        config,
+                                        provider,
+                                        auth,
+                                        &otel,
+                                        conv_id,
+                                        session_source,
+                                        &user_message,
+                                        &agent_response,
+                                        &[], // TODO: track tool calls
+                                        &[], // TODO: track files touched
+                                    )
+                                    .await;
+                                }
+                            });
+                        }
+                    }
+
                     sess.notifier()
                         .notify(&UserNotification::AgentTurnComplete {
                             thread_id: sess.conversation_id.to_string(),
@@ -2980,6 +3120,7 @@ mod tests {
             auth_manager: Arc::clone(&auth_manager),
             otel_event_manager: otel_event_manager.clone(),
             tool_approvals: Mutex::new(ApprovalStore::default()),
+            memory_manager: None, // No memory for exec mode
         };
 
         let turn_context = Session::make_turn_context(
@@ -3058,6 +3199,7 @@ mod tests {
             auth_manager: Arc::clone(&auth_manager),
             otel_event_manager: otel_event_manager.clone(),
             tool_approvals: Mutex::new(ApprovalStore::default()),
+            memory_manager: None, // No memory for test
         };
 
         let turn_context = Arc::new(Session::make_turn_context(

@@ -619,7 +619,7 @@ fn create_subagent_tool() -> ToolSpec {
         "timeout_ms".to_string(),
         JsonSchema::Number {
             description: Some(
-                "Optional wall-clock timeout in milliseconds for this task (defaults to 60s)."
+                "Optional wall-clock timeout in milliseconds for this task (no timeout by default)."
                     .to_string(),
             ),
         },
@@ -1103,6 +1103,8 @@ pub(crate) fn build_specs(
     use crate::tools::handlers::ListDirHandler;
     use crate::tools::handlers::McpHandler;
     use crate::tools::handlers::McpResourceHandler;
+    use crate::tools::handlers::MemoryRecallHandler;
+    use crate::tools::handlers::MemorySaveHandler;
     use crate::tools::handlers::PlanHandler;
     use crate::tools::handlers::ReadFileHandler;
     use crate::tools::handlers::SemanticSearchHandler;
@@ -1112,6 +1114,8 @@ pub(crate) fn build_specs(
     use crate::tools::handlers::TestSyncHandler;
     use crate::tools::handlers::UnifiedExecHandler;
     use crate::tools::handlers::ViewImageHandler;
+    use crate::tools::handlers::MEMORY_RECALL_TOOL;
+    use crate::tools::handlers::MEMORY_SAVE_TOOL;
     use std::sync::Arc;
 
     let mut builder = ToolRegistryBuilder::new();
@@ -1179,6 +1183,14 @@ pub(crate) fn build_specs(
     let semantic_search_handler = Arc::new(SemanticSearchHandler);
     builder.push_spec_with_parallel_support(create_semantic_search_tool(), true);
     builder.register_handler("semantic_search", semantic_search_handler);
+
+    // Memory tools for Kaioken's persistent memory system
+    let memory_recall_handler = Arc::new(MemoryRecallHandler);
+    let memory_save_handler = Arc::new(MemorySaveHandler);
+    builder.push_spec_with_parallel_support(MEMORY_RECALL_TOOL.clone(), true);
+    builder.push_spec(MEMORY_SAVE_TOOL.clone());
+    builder.register_handler("memory_recall", memory_recall_handler);
+    builder.register_handler("memory_save", memory_save_handler);
 
     let subagent_handler = Arc::new(SubagentHandler);
     builder.push_spec_with_parallel_support(create_subagent_tool(), true);

@@ -285,16 +285,14 @@ impl WidgetRef for &ModelMigrationScreen {
 
 fn gpt_5_1_codex_max_migration_copy() -> ModelMigrationCopy {
     ModelMigrationCopy {
-        heading: vec!["Codex Kaioken just got an upgrade. Introducing gpt-5.1-codex-max".bold()],
+        heading: vec!["Kaioken Model Upgrade Available".bold()],
         content: vec![
             Line::from(
-                "Codex Kaioken is now powered by gpt-5.1-codex-max, our latest frontier agentic coding model. It is smarter and faster than its predecessors and capable of long-running project-scale work.",
+                "A newer model is available that offers improved performance and capabilities.",
             ),
-            Line::from(vec![
-                "Learn more at ".into(),
-                "www.openai.com/index/gpt-5-1-codex-max".cyan().underlined(),
-                ".".into(),
-            ]),
+            Line::from(
+                "You can continue using your current model by selecting 'Use existing model' below.",
+            ),
         ],
         can_opt_out: true,
     }
@@ -302,19 +300,14 @@ fn gpt_5_1_codex_max_migration_copy() -> ModelMigrationCopy {
 
 fn gpt5_migration_copy() -> ModelMigrationCopy {
     ModelMigrationCopy {
-        heading: vec!["Introducing our gpt-5.1 models".bold()],
+        heading: vec!["Kaioken Model Update".bold()],
         content: vec![
             Line::from(
-                "We've upgraded our family of models supported in Codex Kaioken to gpt-5.1, gpt-5.1-codex and gpt-5.1-codex-mini.",
+                "Newer models are now available in Kaioken with improved capabilities.",
             ),
             Line::from(
                 "You can continue using legacy models by specifying them directly with the -m option or in your config.toml.",
             ),
-            Line::from(vec![
-                "Learn more at ".into(),
-                "www.openai.com/index/gpt-5-1".cyan().underlined(),
-                ".".into(),
-            ]),
             Line::from(vec!["Press enter to continue".dim()]),
         ],
         can_opt_out: false,

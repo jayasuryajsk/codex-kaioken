@@ -408,6 +408,21 @@ async fn emit_exec_end(
     exec_input: ExecCommandInput<'_>,
     exec_result: ExecCommandResult,
 ) {
+    // Extract memories from command execution (non-blocking)
+    if let Some(mm) = ctx.session.memory_manager() {
+        let mm = mm.clone();
+        let command = exec_input.command.join(" ");
+        let exit_code = exec_result.exit_code;
+        let stdout = exec_result.stdout.clone();
+        let stderr = exec_result.stderr.clone();
+        let cwd = exec_input.cwd.to_path_buf();
+        tokio::spawn(async move {
+            let _ = mm
+                .on_exec_complete(&command, exit_code, &stdout, &stderr, &cwd)
+                .await;
+        });
+    }
+
     ctx.session
         .send_event(
             ctx.turn,
@@ -438,6 +453,37 @@ async fn emit_patch_end(
     stderr: String,
     success: bool,
 ) {
+    // Extract memories from file edits (non-blocking)
+    if success {
+        if let Some(mm) = ctx.session.memory_manager() {
+            let mm = mm.clone();
+            let changes_clone = changes.clone();
+            tokio::spawn(async move {
+                for (path, change) in changes_clone {
+                    // Extract content and diff based on change type
+                    let (content, diff) = match &change {
+                        FileChange::Add { content } => {
+                            (Some(content.clone()), format!("File added: {}", path.display()))
+                        }
+                        FileChange::Delete { content } => {
+                            (Some(content.clone()), format!("File deleted: {}", path.display()))
+                        }
+                        FileChange::Update { unified_diff, .. } => {
+                            (None, unified_diff.clone())
+                        }
+                    };
+
+                    let _ = mm.on_file_edit(&path, &diff).await;
+
+                    // For adds, also extract from the new content
+                    if let Some(content) = content {
+                        let _ = mm.on_file_read(&path, &content).await;
+                    }
+                }
+            });
+        }
+    }
+
     ctx.session
         .send_event(
             ctx.turn,

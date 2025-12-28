@@ -21,8 +21,8 @@ pub struct SemanticSearchHandler;
 
 const DEFAULT_LIMIT: i64 = 25;
 const MAX_LIMIT: i64 = 50;
-const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
-const INDEX_TIMEOUT: Duration = Duration::from_secs(180);
+const COMMAND_TIMEOUT: Duration = Duration::from_secs(300);
+const INDEX_TIMEOUT: Duration = Duration::from_secs(600);
 
 const DEFAULT_INCLUDE_GLOB: &str = "**/*.{rs,md,ts,tsx,py,go}";
 const DEFAULT_EXCLUDE_GLOBS: &[&str] = &[

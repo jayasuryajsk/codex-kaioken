@@ -217,6 +217,17 @@ pub enum Op {
         /// The raw command string after '!'
         command: String,
     },
+
+    /// Save something to the memory system.
+    /// Reply is delivered via `EventMsg::MemoryRememberResponse`.
+    Remember {
+        /// The text to remember.
+        text: String,
+    },
+
+    /// Request memory statistics and recent memories.
+    /// Reply is delivered via `EventMsg::MemoryListResponse`.
+    ListMemories,
 }
 
 /// Determines the conditions under which the user is consulted to approve
@@ -602,6 +613,12 @@ pub enum EventMsg {
     SubagentTaskLog(SubagentTaskLogEvent),
     /// Tool/history events streamed from subagent tasks.
     SubagentHistoryItem(SubagentHistoryItemEvent),
+
+    /// Response to a Remember operation.
+    MemoryRememberResponse(MemoryRememberResponseEvent),
+
+    /// Response to a ListMemories operation.
+    MemoryListResponse(MemoryListResponseEvent),
 }
 
 /// Status of an individual subagent task.
@@ -1638,6 +1655,45 @@ pub struct McpListToolsResponseEvent {
     pub auth_statuses: std::collections::HashMap<String, McpAuthStatus>,
 }
 
+/// Response to a Remember operation.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
+pub struct MemoryRememberResponseEvent {
+    /// Whether the memory was successfully stored.
+    pub success: bool,
+    /// ID of the stored memory, if successful.
+    pub memory_id: Option<String>,
+    /// Error message if failed.
+    pub error: Option<String>,
+}
+
+/// Response to a ListMemories operation.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
+pub struct MemoryListResponseEvent {
+    /// Total number of memories stored.
+    pub total_count: usize,
+    /// Memory counts by type.
+    pub counts_by_type: std::collections::HashMap<String, usize>,
+    /// Recent memories (up to 10).
+    pub recent_memories: Vec<MemoryEntry>,
+    /// Storage location.
+    pub storage_path: Option<String>,
+}
+
+/// A single memory entry for display.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
+pub struct MemoryEntry {
+    /// Memory ID.
+    pub id: String,
+    /// Type of memory (fact, pattern, lesson, etc.).
+    pub memory_type: String,
+    /// Content of the memory.
+    pub content: String,
+    /// Importance score (0.0 - 1.0).
+    pub importance: f64,
+    /// Number of times this memory was used.
+    pub use_count: u32,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
 pub struct McpStartupUpdateEvent {
     /// Server name being started.
@@ -1794,6 +1850,46 @@ pub enum TurnAbortReason {
     Interrupted,
     Replaced,
     ReviewEnded,
+}
+
+// Skills types for the skills system
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum SkillScope {
+    User,
+    Repo,
+    System,
+    Admin,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
+pub struct SkillMetadata {
+    pub name: String,
+    pub description: String,
+    #[ts(optional)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub short_description: Option<String>,
+    pub path: PathBuf,
+    pub scope: SkillScope,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
+pub struct SkillErrorInfo {
+    pub path: PathBuf,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
+pub struct SkillsListEntry {
+    pub cwd: PathBuf,
+    pub skills: Vec<SkillMetadata>,
+    pub errors: Vec<SkillErrorInfo>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema, TS)]
+pub struct ListSkillsResponseEvent {
+    pub skills: Vec<SkillsListEntry>,
 }
 
 #[cfg(test)]

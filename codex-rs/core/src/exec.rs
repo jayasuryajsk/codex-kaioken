@@ -32,7 +32,8 @@ use crate::spawn::StdioPolicy;
 use crate::spawn::spawn_child_async;
 use crate::text_encoding::bytes_to_string_smart;
 
-pub const DEFAULT_EXEC_COMMAND_TIMEOUT_MS: u64 = 10_000;
+/// Default timeout for shell commands (5 minutes).
+pub const DEFAULT_EXEC_COMMAND_TIMEOUT_MS: u64 = 300_000;
 
 // Hardcode these since it does not seem worth including the libc crate just
 // for these.

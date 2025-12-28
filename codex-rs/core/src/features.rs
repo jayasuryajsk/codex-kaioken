@@ -230,6 +230,11 @@ fn feature_for_key(key: &str) -> Option<Feature> {
     legacy::feature_for_key(key)
 }
 
+/// Public version of feature_for_key for external use.
+pub fn feature_for_key_public(key: &str) -> Option<Feature> {
+    feature_for_key(key)
+}
+
 /// Returns `true` if the provided string matches a known feature toggle key.
 pub fn is_known_feature_key(key: &str) -> bool {
     feature_for_key(key).is_some()

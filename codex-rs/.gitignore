@@ -6,3 +6,7 @@
 
 # Value of CARGO_TARGET_DIR when using .devcontainer/devcontainer.json.
 /target-arm64/
+
+# Kaioken cache directories
+.fastembed_cache/
+.kaioken/

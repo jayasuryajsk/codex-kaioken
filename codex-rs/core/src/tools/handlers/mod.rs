@@ -3,6 +3,7 @@ mod grep_files;
 mod list_dir;
 mod mcp;
 mod mcp_resource;
+mod memory;
 mod plan;
 mod read_file;
 mod semantic_search;
@@ -13,12 +14,16 @@ mod unified_exec;
 mod view_image;
 
 pub use plan::PLAN_TOOL;
+pub use memory::MEMORY_RECALL_TOOL;
+pub use memory::MEMORY_SAVE_TOOL;
 
 pub use apply_patch::ApplyPatchHandler;
 pub use grep_files::GrepFilesHandler;
 pub use list_dir::ListDirHandler;
 pub use mcp::McpHandler;
 pub use mcp_resource::McpResourceHandler;
+pub use memory::MemoryRecallHandler;
+pub use memory::MemorySaveHandler;
 pub use plan::PlanHandler;
 pub use read_file::ReadFileHandler;
 pub use semantic_search::SemanticSearchHandler;

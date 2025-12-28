@@ -6,6 +6,7 @@ use codex_protocol::models::ResponseItem;
 
 pub const USER_INSTRUCTIONS_OPEN_TAG_LEGACY: &str = "<user_instructions>";
 pub const USER_INSTRUCTIONS_PREFIX: &str = "# AGENTS.md instructions for ";
+pub(crate) const SKILL_INSTRUCTIONS_PREFIX: &str = "<skill>\n";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename = "user_instructions", rename_all = "snake_case")]
@@ -35,6 +36,41 @@ impl From<UserInstructions> for ResponseItem {
                     "{USER_INSTRUCTIONS_PREFIX}{directory}\n\n<INSTRUCTIONS>\n{contents}\n</INSTRUCTIONS>",
                     directory = ui.directory,
                     contents = ui.text
+                ),
+            }],
+        }
+    }
+}
+
+/// Skill instructions are injected into the conversation context for active skills.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub(crate) struct SkillInstructions {
+    pub name: String,
+    pub path: String,
+    pub contents: String,
+}
+
+impl SkillInstructions {
+    pub fn is_skill_instructions(message: &[ContentItem]) -> bool {
+        if let [ContentItem::InputText { text }] = message {
+            text.starts_with(SKILL_INSTRUCTIONS_PREFIX)
+        } else {
+            false
+        }
+    }
+}
+
+impl From<SkillInstructions> for ResponseItem {
+    fn from(si: SkillInstructions) -> Self {
+        ResponseItem::Message {
+            id: None,
+            role: "user".to_string(),
+            content: vec![ContentItem::InputText {
+                text: format!(
+                    "<skill>\n<name>{name}</name>\n<path>{path}</path>\n{contents}\n</skill>",
+                    name = si.name,
+                    path = si.path,
+                    contents = si.contents
                 ),
             }],
         }

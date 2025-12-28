@@ -93,6 +93,8 @@ pub(crate) fn should_persist_event_msg(ev: &EventMsg) -> bool {
         | EventMsg::CheckpointCreated(_)
         | EventMsg::CheckpointRestored(_)
         | EventMsg::CheckpointList(_)
-        | EventMsg::CheckpointError(_) => false,
+        | EventMsg::CheckpointError(_)
+        | EventMsg::MemoryRememberResponse(_)
+        | EventMsg::MemoryListResponse(_) => false,
     }
 }

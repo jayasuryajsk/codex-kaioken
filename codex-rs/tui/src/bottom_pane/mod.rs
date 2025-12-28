@@ -431,6 +431,11 @@ impl BottomPane {
         }
     }
 
+    pub(crate) fn set_terminal_count(&mut self, running: usize, finished: usize) {
+        self.composer.set_terminal_count(running, finished);
+        self.request_redraw();
+    }
+
     pub(crate) fn semantic_status_snapshot(&self) -> (SemanticStatus, Option<String>) {
         (self.semantic_status, self.semantic_message.clone())
     }
@@ -697,7 +702,7 @@ mod tests {
             frame_requester: FrameRequester::test_dummy(),
             has_input_focus: true,
             enhanced_keys_supported: false,
-            placeholder_text: "Ask Codex Kaioken to do anything".to_string(),
+            placeholder_text: "Ask Kaioken anything".to_string(),
             disable_paste_burst: false,
             animations_enabled: true,
         });
@@ -718,7 +723,7 @@ mod tests {
             frame_requester: FrameRequester::test_dummy(),
             has_input_focus: true,
             enhanced_keys_supported: false,
-            placeholder_text: "Ask Codex Kaioken to do anything".to_string(),
+            placeholder_text: "Ask Kaioken anything".to_string(),
             disable_paste_burst: false,
             animations_enabled: true,
         });
@@ -750,7 +755,7 @@ mod tests {
             frame_requester: FrameRequester::test_dummy(),
             has_input_focus: true,
             enhanced_keys_supported: false,
-            placeholder_text: "Ask Codex Kaioken to do anything".to_string(),
+            placeholder_text: "Ask Kaioken anything".to_string(),
             disable_paste_burst: false,
             animations_enabled: true,
         });
@@ -816,7 +821,7 @@ mod tests {
             frame_requester: FrameRequester::test_dummy(),
             has_input_focus: true,
             enhanced_keys_supported: false,
-            placeholder_text: "Ask Codex Kaioken to do anything".to_string(),
+            placeholder_text: "Ask Kaioken anything".to_string(),
             disable_paste_burst: false,
             animations_enabled: true,
         });
@@ -842,7 +847,7 @@ mod tests {
             frame_requester: FrameRequester::test_dummy(),
             has_input_focus: true,
             enhanced_keys_supported: false,
-            placeholder_text: "Ask Codex Kaioken to do anything".to_string(),
+            placeholder_text: "Ask Kaioken anything".to_string(),
             disable_paste_burst: false,
             animations_enabled: true,
         });
@@ -872,7 +877,7 @@ mod tests {
             frame_requester: FrameRequester::test_dummy(),
             has_input_focus: true,
             enhanced_keys_supported: false,
-            placeholder_text: "Ask Codex Kaioken to do anything".to_string(),
+            placeholder_text: "Ask Kaioken anything".to_string(),
             disable_paste_burst: false,
             animations_enabled: true,
         });
@@ -899,7 +904,7 @@ mod tests {
             frame_requester: FrameRequester::test_dummy(),
             has_input_focus: true,
             enhanced_keys_supported: false,
-            placeholder_text: "Ask Codex Kaioken to do anything".to_string(),
+            placeholder_text: "Ask Kaioken anything".to_string(),
             disable_paste_burst: false,
             animations_enabled: true,
         });

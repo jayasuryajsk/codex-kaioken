@@ -188,6 +188,17 @@ pub(crate) enum AppEvent {
     OpenFeedbackConsent {
         category: FeedbackCategory,
     },
+
+    /// Toggle an experimental feature on/off.
+    ToggleFeature {
+        key: String,
+        enabled: bool,
+    },
+
+    /// Kill a background terminal by call_id.
+    KillTerminal {
+        call_id: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

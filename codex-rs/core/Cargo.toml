@@ -37,11 +37,13 @@ codex-utils-string = { workspace = true }
 codex-windows-sandbox = { package = "codex-windows-sandbox", path = "../windows-sandbox-rs" }
 dirs = { workspace = true }
 dunce = { workspace = true }
+fastembed = { workspace = true }
 env-flags = { workspace = true }
 encoding_rs = { workspace = true }
 eventsource-stream = { workspace = true }
 futures = { workspace = true }
 http = { workspace = true }
+include_dir = "0.7"
 indexmap = { workspace = true }
 keyring = { workspace = true, features = ["crypto-rust"] }
 libc = { workspace = true }
@@ -52,6 +54,7 @@ regex-lite = { workspace = true }
 reqwest = { workspace = true, features = ["json", "stream"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+serde_yaml = "0.9"
 sha1 = { workspace = true }
 sha2 = { workspace = true }
 shlex = { workspace = true }
@@ -60,6 +63,7 @@ strum_macros = { workspace = true }
 url = { workspace = true }
 once_cell = { workspace = true }
 regex = { workspace = true }
+rusqlite = { version = "0.31", features = ["bundled"] }
 tempfile = { workspace = true }
 test-case = "3.3.1"
 test-log = { workspace = true }
