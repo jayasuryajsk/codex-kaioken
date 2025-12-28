@@ -1,6 +1,6 @@
 {
   "name": "@jayasuryajsk/codex-kaioken",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "CLI wrapper that downloads the Codex Kaioken binary",
   "type": "module",
   "bin": {
