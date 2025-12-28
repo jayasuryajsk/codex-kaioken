@@ -12,14 +12,16 @@ jobs:
   build:
     name: ${{ matrix.archive }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-15
             target: aarch64-apple-darwin
             archive: codex-kaioken-aarch64-apple-darwin.tar.gz
             use_cross: "false"
-          - os: macos-15-intel
+          - os: macos-13
             target: x86_64-apple-darwin
             archive: codex-kaioken-x86_64-apple-darwin.tar.gz
             use_cross: "false"
@@ -45,6 +47,24 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: codex-rs/target
+          key: ${{ runner.os }}-${{ matrix.target }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.target }}-cargo-build-
 
       - name: Install cross
         if: ${{ matrix.use_cross == 'true' }}
