@@ -8,7 +8,7 @@ Codex Kaioken is a fork of OpenAI's Codex CLI that focuses on aggressive UX upgr
 
 ### Persistent Memory System
 
-Kaioken features a state-of-the-art memory system that enables the agent to learn and remember across sessions:
+Kaioken includes a memory system that enables the agent to learn and remember across sessions:
 
 - **Auto-learning** – Automatically extracts knowledge from file reads, edits, and command executions
 - **Mistake tracking** – Remembers failed commands and how they were fixed, so the same mistakes aren't repeated
