@@ -12,12 +12,20 @@ path = "src/bin/codex.rs"
 name = "codex-kaioken"
 path = "src/main.rs"
 
+[[bin]]
+name = "codex-hunter"
+path = "src/bin/hunter.rs"
+required-features = ["hunter"]
+
 [lib]
 name = "codex_cli"
 path = "src/lib.rs"
 
 [lints]
 workspace = true
+
+[features]
+hunter = ["codex-core/hunter"]
 
 [dependencies]
 anyhow = { workspace = true }

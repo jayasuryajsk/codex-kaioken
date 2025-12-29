@@ -8,14 +8,40 @@ use crate::truncate::TruncationPolicy;
 
 /// The `instructions` field in the payload sent to a model should always start
 /// with this content.
+#[cfg(not(feature = "hunter"))]
 const BASE_INSTRUCTIONS: &str = include_str!("../prompt.md");
+#[cfg(feature = "hunter")]
+const BASE_INSTRUCTIONS: &str = include_str!("../hunter_prompt.md");
 
+#[cfg(not(feature = "hunter"))]
 const GPT_5_CODEX_INSTRUCTIONS: &str = include_str!("../gpt_5_codex_prompt.md");
+#[cfg(feature = "hunter")]
+const GPT_5_CODEX_INSTRUCTIONS: &str = include_str!("../hunter_prompt.md");
+
+#[cfg(not(feature = "hunter"))]
 const GPT_5_1_INSTRUCTIONS: &str = include_str!("../gpt_5_1_prompt.md");
+#[cfg(feature = "hunter")]
+const GPT_5_1_INSTRUCTIONS: &str = include_str!("../hunter_prompt.md");
+
+#[cfg(not(feature = "hunter"))]
 const GPT_5_1_CODEX_MAX_INSTRUCTIONS: &str = include_str!("../gpt-5.1-codex-max_prompt.md");
+#[cfg(feature = "hunter")]
+const GPT_5_1_CODEX_MAX_INSTRUCTIONS: &str = include_str!("../hunter_prompt.md");
+
+#[cfg(not(feature = "hunter"))]
 const GPT_5_2_INSTRUCTIONS: &str = include_str!("../gpt_5_2_prompt.md");
+#[cfg(feature = "hunter")]
+const GPT_5_2_INSTRUCTIONS: &str = include_str!("../hunter_prompt.md");
+
+#[cfg(not(feature = "hunter"))]
 const GPT_5_2_CODEX_INSTRUCTIONS: &str = include_str!("../gpt-5.2-codex_prompt.md");
+#[cfg(feature = "hunter")]
+const GPT_5_2_CODEX_INSTRUCTIONS: &str = include_str!("../hunter_prompt.md");
+
+#[cfg(not(feature = "hunter"))]
 const GPT_5_2_CODEX_MAX_INSTRUCTIONS: &str = include_str!("../gpt-5.2-codex-max_prompt.md");
+#[cfg(feature = "hunter")]
+const GPT_5_2_CODEX_MAX_INSTRUCTIONS: &str = include_str!("../hunter_prompt.md");
 
 /// A model family is a group of models that share certain characteristics.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
