@@ -270,26 +270,28 @@ fn context_window_line(
     // Show terminal indicator if there are any terminals
     if terminal_count.running > 0 || terminal_count.finished > 0 {
         spans.push(" · ".dim());
-        spans.push(terminal_status_span(terminal_count));
+        spans.push(terminal_status_span(terminal_count, spinner));
     }
     Line::from(spans)
 }
 
-fn terminal_status_span(count: &TerminalCount) -> Span<'static> {
+fn terminal_status_span(count: &TerminalCount, spinner: char) -> Span<'static> {
     use ratatui::style::Color;
+    let running_label = if count.running == 1 { "task" } else { "tasks" };
+    let done_label = if count.finished == 1 { "done" } else { "done" };
     if count.running > 0 && count.finished > 0 {
         Span::styled(
-            format!("⬤ {} ✓ {}", count.running, count.finished),
+            format!("{} {} {} · ✓ {} {}", spinner, count.running, running_label, count.finished, done_label),
             ratatui::style::Style::default().fg(Color::Cyan),
         )
     } else if count.running > 0 {
         Span::styled(
-            format!("⬤ {}", count.running),
+            format!("{} {} {}", spinner, count.running, running_label),
             ratatui::style::Style::default().fg(Color::Cyan),
         )
     } else {
         Span::styled(
-            format!("✓ {}", count.finished),
+            format!("✓ {} {}", count.finished, done_label),
             ratatui::style::Style::default().fg(Color::Green),
         )
     }
