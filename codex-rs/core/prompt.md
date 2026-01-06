@@ -290,17 +290,6 @@ Generally, ensure your final answers adapt their shape and depth to the request.
 
 For casual greetings, acknowledgements, or other one-off conversational messages that are not delivering substantive information or structured results, respond naturally without section headers or bullet formatting.
 
-## Semantic search
-
-- When you need to locate code or docs, call the `semantic_search` tool first; it uses the sgrep index with repo-root defaults and excludes build artefacts for speed.
-- Keep limits modest, add filters like `language=rust` or `path=core/`, and fall back to shell/rg only if semantic_search has no results or indexing has not finished.
-
-## Subagents
-
-- Use `subagent_run` to fan out independent tasks (max 4) with concise names/prompts and optional `cwd`; prefer when work can run in parallel.
-- Child sessions auto-approve (no permission prompts), run with workspace-write/no-network sandbox, and have shell/unified-exec/apply-patch-freeform disabled; no default timeout is applied unless `timeout_ms` is set.
-- When the user asks for “subagents”, “parallel agents”, or multiple agents, actually call `subagent_run` instead of just narrating a plan.
-
 # Tool Guidelines
 
 ## Shell commands
@@ -308,7 +297,7 @@ For casual greetings, acknowledgements, or other one-off conversational messages
 When using the shell, you must adhere to the following guidelines:
 
 - When searching for text or files, prefer using `rg` or `rg --files` respectively because `rg` is much faster than alternatives like `grep`. (If the `rg` command is not found, then use alternatives.)
-- Read files in chunks with a max chunk size of 250 lines. Do not use python scripts to attempt to output larger chunks of a file. Command line output will be truncated after 10 kilobytes or 256 lines of output, regardless of the command used.
+- Do not use python scripts to attempt to output larger chunks of a file.
 
 ## `update_plan`
 
