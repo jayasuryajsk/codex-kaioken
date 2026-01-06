@@ -17,32 +17,20 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux
+          # Linux x64
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             archive: codex-kaioken-x86_64-unknown-linux-gnu.tar.gz
             use_cross: "false"
-          - os: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-gnu
-            archive: codex-kaioken-aarch64-unknown-linux-gnu.tar.gz
-            use_cross: "false"
-          # macOS
+          # macOS Apple Silicon
           - os: macos-14
             target: aarch64-apple-darwin
             archive: codex-kaioken-aarch64-apple-darwin.tar.gz
             use_cross: "false"
-          - os: macos-13-large
-            target: x86_64-apple-darwin
-            archive: codex-kaioken-x86_64-apple-darwin.tar.gz
-            use_cross: "false"
-          # Windows
+          # Windows x64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             archive: codex-kaioken-x86_64-pc-windows-msvc.zip
-            use_cross: "false"
-          - os: windows-latest
-            target: aarch64-pc-windows-msvc
-            archive: codex-kaioken-aarch64-pc-windows-msvc.zip
             use_cross: "false"
 
     env:
