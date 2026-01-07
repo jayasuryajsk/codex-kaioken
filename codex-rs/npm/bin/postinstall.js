@@ -8,7 +8,6 @@ import fetch from 'node-fetch';
 import tar from 'tar';
 import unzipper from 'unzipper';
 
-const version = process.env.CODEX_KAIOKEN_VERSION || '0.1.11';
 const platform = process.platform;
 const arch = process.arch;
 
@@ -29,7 +28,8 @@ if (!mapping[key]) {
 
 const asset = mapping[key];
 const isZip = asset.endsWith('.zip');
-const url = `https://github.com/jayasuryajsk/codex-kaioken/releases/download/v${version}/${asset}`;
+// Download from latest release - no version hardcoding needed
+const url = `https://github.com/jayasuryajsk/codex-kaioken/releases/latest/download/${asset}`;
 const dest = join(tmpdir(), asset);
 const localTarball = process.env.CODEX_KAIOKEN_LOCAL_TARBALL;
 const here = dirname(fileURLToPath(import.meta.url));
