@@ -57,9 +57,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: codex-rs/target
-          key: ${{ runner.os }}-${{ matrix.target }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ matrix.target }}-${{ matrix.use_cross }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-${{ matrix.target }}-cargo-build-
+            ${{ runner.os }}-${{ matrix.target }}-${{ matrix.use_cross }}-cargo-build-
 
       - name: Install cross
         if: ${{ matrix.use_cross == 'true' }}
