@@ -31,6 +31,10 @@ pub(crate) struct StatusIndicatorWidget {
     app_event_tx: AppEventSender,
     frame_requester: FrameRequester,
     animations_enabled: bool,
+
+    /// Real-time token counts for display
+    input_tokens: Option<i64>,
+    output_tokens: Option<i64>,
 }
 
 // Format elapsed seconds into a compact human-friendly form used by the status line.
@@ -50,6 +54,17 @@ pub fn fmt_elapsed_compact(elapsed_secs: u64) -> String {
     format!("{hours}h {minutes:02}m {seconds:02}s")
 }
 
+/// Format token count compactly (e.g., 1.2K, 45K, 1.5M)
+pub fn format_token_count(count: i64) -> String {
+    if count >= 1_000_000 {
+        format!("{:.1}M", count as f64 / 1_000_000.0)
+    } else if count >= 1_000 {
+        format!("{:.1}K", count as f64 / 1_000.0)
+    } else {
+        count.to_string()
+    }
+}
+
 impl StatusIndicatorWidget {
     pub(crate) fn new(
         app_event_tx: AppEventSender,
@@ -66,6 +81,9 @@ impl StatusIndicatorWidget {
             app_event_tx,
             frame_requester,
             animations_enabled,
+
+            input_tokens: None,
+            output_tokens: None,
         }
     }
 
@@ -85,6 +103,11 @@ impl StatusIndicatorWidget {
 
     pub(crate) fn set_interrupt_hint_visible(&mut self, visible: bool) {
         self.show_interrupt_hint = visible;
+    }
+
+    pub(crate) fn set_token_counts(&mut self, input: Option<i64>, output: Option<i64>) {
+        self.input_tokens = input;
+        self.output_tokens = output;
     }
 
     #[cfg(test)]
@@ -151,7 +174,7 @@ impl Renderable for StatusIndicatorWidget {
         let elapsed_duration = self.elapsed_duration_at(now);
         let pretty_elapsed = fmt_elapsed_compact(elapsed_duration.as_secs());
 
-        let mut spans = Vec::with_capacity(5);
+        let mut spans = Vec::with_capacity(8);
         spans.push(spinner(Some(self.last_resume_at), self.animations_enabled));
         spans.push(" ".into());
         if self.animations_enabled {
@@ -168,6 +191,12 @@ impl Renderable for StatusIndicatorWidget {
             ]);
         } else {
             spans.push(format!("({pretty_elapsed})").dim());
+        }
+
+        // Show token counts if available
+        if let (Some(input), Some(output)) = (self.input_tokens, self.output_tokens) {
+            spans.push(" · ".dim());
+            spans.push(format!("↑{} ↓{}", format_token_count(input), format_token_count(output)).dim());
         }
 
         Line::from(spans).render_ref(area, buf);

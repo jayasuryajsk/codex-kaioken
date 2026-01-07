@@ -25,6 +25,9 @@ pub(crate) struct FooterProps {
     pub(crate) rate_limit_summary: Option<String>,
     /// Count of running and finished background terminals
     pub(crate) terminal_count: TerminalCount,
+    /// Token usage for displaying input/output counters
+    pub(crate) input_tokens: Option<i64>,
+    pub(crate) output_tokens: Option<i64>,
 }
 
 /// Background terminal counts for footer display
@@ -102,6 +105,8 @@ fn footer_lines(props: &FooterProps) -> Vec<Line<'static>> {
                 &props.semantic_message,
                 &props.rate_limit_summary,
                 &props.terminal_count,
+                props.input_tokens,
+                props.output_tokens,
             );
             line.push_span(" · ".dim());
             line.extend(vec![
@@ -122,6 +127,8 @@ fn footer_lines(props: &FooterProps) -> Vec<Line<'static>> {
             &props.semantic_message,
             &props.rate_limit_summary,
             &props.terminal_count,
+            props.input_tokens,
+            props.output_tokens,
         )],
     }
 }
@@ -256,9 +263,18 @@ fn context_window_line(
     message: &Option<String>,
     rate_limit_summary: &Option<String>,
     terminal_count: &TerminalCount,
+    input_tokens: Option<i64>,
+    output_tokens: Option<i64>,
 ) -> Line<'static> {
     let percent = percent.unwrap_or(100).clamp(0, 100);
     let mut spans = vec![Span::from(format!("{percent}% context left")).dim()];
+
+    // Show token usage if available
+    if let (Some(input), Some(output)) = (input_tokens, output_tokens) {
+        spans.push(" · ".dim());
+        spans.push(Span::from(format!("↑{} ↓{}", format_token_count(input), format_token_count(output))).dim());
+    }
+
     if let Some(semantic_span) = semantic_search_status_span(status, spinner, message) {
         spans.push(" · ".dim());
         spans.push(semantic_span);
@@ -267,33 +283,36 @@ fn context_window_line(
         spans.push(" · ".dim());
         spans.push(Span::from(summary.clone()).dim());
     }
-    // Show terminal indicator if there are any terminals
-    if terminal_count.running > 0 || terminal_count.finished > 0 {
+    // Show terminal indicator only for running tasks
+    if let Some(terminal_span) = terminal_status_span(terminal_count, spinner) {
         spans.push(" · ".dim());
-        spans.push(terminal_status_span(terminal_count, spinner));
+        spans.push(terminal_span);
     }
     Line::from(spans)
 }
 
-fn terminal_status_span(count: &TerminalCount, spinner: char) -> Span<'static> {
+/// Format token count compactly (e.g., 1.2K, 45K, 1.5M)
+fn format_token_count(count: i64) -> String {
+    if count >= 1_000_000 {
+        format!("{:.1}M", count as f64 / 1_000_000.0)
+    } else if count >= 1_000 {
+        format!("{:.1}K", count as f64 / 1_000.0)
+    } else {
+        count.to_string()
+    }
+}
+
+fn terminal_status_span(count: &TerminalCount, spinner: char) -> Option<Span<'static>> {
     use ratatui::style::Color;
-    let running_label = if count.running == 1 { "task" } else { "tasks" };
-    let done_label = if count.finished == 1 { "done" } else { "done" };
-    if count.running > 0 && count.finished > 0 {
-        Span::styled(
-            format!("{} {} {} · ✓ {} {}", spinner, count.running, running_label, count.finished, done_label),
-            ratatui::style::Style::default().fg(Color::Cyan),
-        )
-    } else if count.running > 0 {
-        Span::styled(
+    // Only show running tasks, not finished ones
+    if count.running > 0 {
+        let running_label = if count.running == 1 { "task" } else { "tasks" };
+        Some(Span::styled(
             format!("{} {} {}", spinner, count.running, running_label),
             ratatui::style::Style::default().fg(Color::Cyan),
-        )
+        ))
     } else {
-        Span::styled(
-            format!("✓ {} {}", count.finished, done_label),
-            ratatui::style::Style::default().fg(Color::Green),
-        )
+        None
     }
 }
 
@@ -494,6 +513,8 @@ mod tests {
                 semantic_message: None,
                 rate_limit_summary: None,
                 terminal_count: TerminalCount::default(),
+                input_tokens: None,
+                output_tokens: None,
             },
         );
 
@@ -510,6 +531,8 @@ mod tests {
                 semantic_message: None,
                 rate_limit_summary: None,
                 terminal_count: TerminalCount::default(),
+                input_tokens: None,
+                output_tokens: None,
             },
         );
 
@@ -526,6 +549,8 @@ mod tests {
                 semantic_message: None,
                 rate_limit_summary: None,
                 terminal_count: TerminalCount::default(),
+                input_tokens: None,
+                output_tokens: None,
             },
         );
 
@@ -542,6 +567,8 @@ mod tests {
                 semantic_message: None,
                 rate_limit_summary: None,
                 terminal_count: TerminalCount::default(),
+                input_tokens: None,
+                output_tokens: None,
             },
         );
 
@@ -558,6 +585,8 @@ mod tests {
                 semantic_message: None,
                 rate_limit_summary: None,
                 terminal_count: TerminalCount::default(),
+                input_tokens: None,
+                output_tokens: None,
             },
         );
 
@@ -574,6 +603,8 @@ mod tests {
                 semantic_message: None,
                 rate_limit_summary: None,
                 terminal_count: TerminalCount::default(),
+                input_tokens: None,
+                output_tokens: None,
             },
         );
 
@@ -590,6 +621,8 @@ mod tests {
                 semantic_message: None,
                 rate_limit_summary: None,
                 terminal_count: TerminalCount::default(),
+                input_tokens: Some(1500),
+                output_tokens: Some(350),
             },
         );
     }

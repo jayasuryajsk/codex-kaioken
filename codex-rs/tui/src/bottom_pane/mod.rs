@@ -83,6 +83,8 @@ pub(crate) struct BottomPane {
     semantic_message: Option<String>,
     semantic_spinner: SemanticSpinner,
     footer_notice: Option<String>,
+    /// Number of currently running background terminals (for spinner animation)
+    running_terminals: usize,
 }
 
 pub(crate) struct BottomPaneParams {
@@ -129,6 +131,7 @@ impl BottomPane {
             semantic_message: None,
             semantic_spinner: SemanticSpinner::new(),
             footer_notice: None,
+            running_terminals: 0,
         };
         pane.composer.set_semantic_status(
             pane.semantic_status,
@@ -394,6 +397,13 @@ impl BottomPane {
         }
     }
 
+    pub(crate) fn set_status_token_counts(&mut self, input: Option<i64>, output: Option<i64>) {
+        if let Some(status) = self.status.as_mut() {
+            status.set_token_counts(input, output);
+            self.request_redraw();
+        }
+    }
+
     pub(crate) fn set_context_window_percent(&mut self, percent: Option<i64>) {
         if self.context_window_percent == percent {
             return;
@@ -401,6 +411,11 @@ impl BottomPane {
 
         self.context_window_percent = percent;
         self.composer.set_context_window_percent(percent);
+        self.request_redraw();
+    }
+
+    pub(crate) fn set_token_counts(&mut self, input: Option<i64>, output: Option<i64>) {
+        self.composer.set_token_counts(input, output);
         self.request_redraw();
     }
 
@@ -432,8 +447,13 @@ impl BottomPane {
     }
 
     pub(crate) fn set_terminal_count(&mut self, running: usize, finished: usize) {
+        self.running_terminals = running;
         self.composer.set_terminal_count(running, finished);
         self.request_redraw();
+        // Schedule animation frames when terminals are running
+        if running > 0 && self.animations_enabled {
+            self.request_redraw_in(SemanticSpinner::tick_duration());
+        }
     }
 
     pub(crate) fn semantic_status_snapshot(&self) -> (SemanticStatus, Option<String>) {
@@ -441,7 +461,10 @@ impl BottomPane {
     }
 
     pub(crate) fn tick(&mut self) {
-        if !matches!(self.semantic_status, SemanticStatus::Indexing) {
+        let needs_animation = matches!(self.semantic_status, SemanticStatus::Indexing)
+            || self.running_terminals > 0;
+
+        if !needs_animation {
             return;
         }
 

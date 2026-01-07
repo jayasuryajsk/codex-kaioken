@@ -619,6 +619,22 @@ pub(crate) fn new_user_prompt(message: String) -> UserHistoryCell {
     UserHistoryCell { message }
 }
 
+/// Create an initial session header immediately using config values.
+/// This shows the header instantly on startup without waiting for SessionConfiguredEvent.
+pub(crate) fn new_initial_header_from_config(config: &Config, snapshot: WelcomeSnapshot) -> SessionInfoCell {
+    let header = SessionHeaderHistoryCell::new(
+        config.model.clone(),
+        config.cwd.clone(),
+        config.approval_policy,
+        snapshot,
+        display_version(),
+    );
+
+    SessionInfoCell(CompositeHistoryCell {
+        parts: vec![Box::new(header)],
+    })
+}
+
 #[derive(Debug)]
 struct SessionHeaderHistoryCell {
     version: String,
@@ -1713,10 +1729,20 @@ pub(crate) fn new_reasoning_summary_block(
 #[derive(Debug)]
 pub struct FinalMessageSeparator {
     elapsed_seconds: Option<u64>,
+    input_tokens: Option<i64>,
+    output_tokens: Option<i64>,
 }
 impl FinalMessageSeparator {
-    pub(crate) fn new(elapsed_seconds: Option<u64>) -> Self {
-        Self { elapsed_seconds }
+    pub(crate) fn new(
+        elapsed_seconds: Option<u64>,
+        input_tokens: Option<i64>,
+        output_tokens: Option<i64>,
+    ) -> Self {
+        Self {
+            elapsed_seconds,
+            input_tokens,
+            output_tokens,
+        }
     }
 }
 impl HistoryCell for FinalMessageSeparator {
@@ -1725,7 +1751,16 @@ impl HistoryCell for FinalMessageSeparator {
             .elapsed_seconds
             .map(super::status_indicator_widget::fmt_elapsed_compact);
         if let Some(elapsed_seconds) = elapsed_seconds {
-            let worked_for = format!("─ Worked for {elapsed_seconds} ─");
+            // Build the label with optional token counts
+            let token_info = match (self.input_tokens, self.output_tokens) {
+                (Some(input), Some(output)) => format!(
+                    " · ↑{} ↓{}",
+                    super::status_indicator_widget::format_token_count(input),
+                    super::status_indicator_widget::format_token_count(output)
+                ),
+                _ => String::new(),
+            };
+            let worked_for = format!("─ Worked for {elapsed_seconds}{token_info} ─");
             let worked_for_width = worked_for.width();
             vec![
                 Line::from_iter([

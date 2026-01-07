@@ -796,6 +796,7 @@ impl ChatWidget {
             Some(info) => self.apply_token_info(info),
             None => {
                 self.bottom_pane.set_context_window_percent(None);
+                self.bottom_pane.set_token_counts(None, None);
                 self.token_info = None;
             }
         }
@@ -804,6 +805,16 @@ impl ChatWidget {
     fn apply_token_info(&mut self, info: TokenUsageInfo) {
         let percent = self.context_remaining_percent(&info);
         self.bottom_pane.set_context_window_percent(percent);
+        // Pass cumulative token counts for footer display
+        self.bottom_pane.set_token_counts(
+            Some(info.total_token_usage.input_tokens),
+            Some(info.total_token_usage.output_tokens),
+        );
+        // Also update the status indicator (live "Working" display)
+        self.bottom_pane.set_status_token_counts(
+            Some(info.total_token_usage.input_tokens),
+            Some(info.total_token_usage.output_tokens),
+        );
         self.token_info = Some(info);
     }
 
@@ -822,6 +833,7 @@ impl ChatWidget {
                 Some(info) => self.apply_token_info(info),
                 None => {
                     self.bottom_pane.set_context_window_percent(None);
+                    self.bottom_pane.set_token_counts(None, None);
                     self.token_info = None;
                 }
             }
@@ -1418,13 +1430,29 @@ impl ChatWidget {
                     .bottom_pane
                     .status_widget()
                     .map(super::status_indicator_widget::StatusIndicatorWidget::elapsed_seconds);
-                self.add_to_history(history_cell::FinalMessageSeparator::new(elapsed_seconds));
+                // Get token counts for the separator
+                let (input_tokens, output_tokens) = self
+                    .token_info
+                    .as_ref()
+                    .map(|info| {
+                        (
+                            Some(info.total_token_usage.input_tokens),
+                            Some(info.total_token_usage.output_tokens),
+                        )
+                    })
+                    .unwrap_or((None, None));
+                self.add_to_history(history_cell::FinalMessageSeparator::new(
+                    elapsed_seconds,
+                    input_tokens,
+                    output_tokens,
+                ));
                 self.needs_final_message_separator = false;
             }
             self.stream_controller = Some(StreamController::new(
                 self.last_rendered_width.get().map(|w| w.saturating_sub(2)),
             ));
         }
+
         if let Some(controller) = self.stream_controller.as_mut()
             && controller.push(&delta)
         {
@@ -1729,7 +1757,7 @@ impl ChatWidget {
             active_cell: None,
             config: config.clone(),
             auth_manager,
-            session_header: SessionHeader::new(config.model),
+            session_header: SessionHeader::new(config.model.clone()),
             initial_user_message: create_initial_user_message(
                 initial_prompt.unwrap_or_default(),
                 initial_images,
@@ -1754,7 +1782,7 @@ impl ChatWidget {
             retry_status_header: None,
             conversation_id: None,
             queued_user_messages: VecDeque::new(),
-            show_welcome_banner: true,
+            show_welcome_banner: false, // Header shown immediately below
             suppress_session_configured_redraw: false,
             pending_notification: None,
             is_review_mode: false,
@@ -1769,6 +1797,14 @@ impl ChatWidget {
             plan_feedback_pending: false,
             default_placeholder,
         };
+
+        // Show the header immediately using config values, so users see it right away
+        // without waiting for SessionConfiguredEvent from the backend.
+        let initial_snapshot = widget.welcome_snapshot();
+        widget.add_to_history(history_cell::new_initial_header_from_config(
+            &config,
+            initial_snapshot,
+        ));
 
         widget.prefetch_rate_limits();
         widget.start_semantic_warmup();
@@ -1815,7 +1851,7 @@ impl ChatWidget {
             active_cell: None,
             config: config.clone(),
             auth_manager,
-            session_header: SessionHeader::new(config.model),
+            session_header: SessionHeader::new(config.model.clone()),
             initial_user_message: create_initial_user_message(
                 initial_prompt.unwrap_or_default(),
                 initial_images,

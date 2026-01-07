@@ -124,6 +124,8 @@ pub(crate) struct ChatComposer {
     semantic_message: Option<String>,
     rate_limit_summary: Option<String>,
     terminal_count: TerminalCount,
+    input_tokens: Option<i64>,
+    output_tokens: Option<i64>,
 }
 
 /// Popup state – at most one can be visible at any time.
@@ -174,6 +176,8 @@ impl ChatComposer {
             semantic_message: None,
             rate_limit_summary: None,
             terminal_count: TerminalCount::default(),
+            input_tokens: None,
+            output_tokens: None,
         };
         // Apply configuration via the setter to keep side-effects centralized.
         this.set_disable_paste_burst(disable_paste_burst);
@@ -1424,6 +1428,8 @@ impl ChatComposer {
             semantic_message: self.semantic_message.clone(),
             rate_limit_summary: self.rate_limit_summary.clone(),
             terminal_count: self.terminal_count.clone(),
+            input_tokens: self.input_tokens,
+            output_tokens: self.output_tokens,
         }
     }
 
@@ -1558,6 +1564,11 @@ impl ChatComposer {
         if self.context_window_percent != percent {
             self.context_window_percent = percent;
         }
+    }
+
+    pub(crate) fn set_token_counts(&mut self, input: Option<i64>, output: Option<i64>) {
+        self.input_tokens = input;
+        self.output_tokens = output;
     }
 
     pub(crate) fn set_semantic_status(
