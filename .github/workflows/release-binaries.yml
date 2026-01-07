@@ -44,7 +44,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Cache cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/registry
@@ -54,7 +54,7 @@ jobs:
             ${{ runner.os }}-cargo-registry-
 
       - name: Cache cargo build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: codex-rs/target
           key: ${{ runner.os }}-${{ matrix.target }}-${{ matrix.use_cross }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
