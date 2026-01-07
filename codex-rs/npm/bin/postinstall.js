@@ -8,7 +8,7 @@ import fetch from 'node-fetch';
 import tar from 'tar';
 import unzipper from 'unzipper';
 
-const version = process.env.CODEX_KAIOKEN_VERSION || '0.1.10';
+const version = process.env.CODEX_KAIOKEN_VERSION || '0.1.11';
 const platform = process.platform;
 const arch = process.arch;
 
