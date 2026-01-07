@@ -17,11 +17,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Linux x64 (using cross for glibc 2.17 compatibility)
+          # Linux x64
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             archive: codex-kaioken-x86_64-unknown-linux-gnu.tar.gz
-            use_cross: "true"
+            use_cross: "false"
           # macOS Apple Silicon
           - os: macos-14
             target: aarch64-apple-darwin
