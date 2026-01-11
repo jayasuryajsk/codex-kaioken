@@ -125,6 +125,7 @@ impl ToolHandler for SubagentHandler {
                     SubagentTaskStatus::Running,
                     &call_id,
                     &task.name,
+                    Some(agent_index),
                     None,
                 )
                 .await;
@@ -244,6 +245,7 @@ async fn run_subagent_task(
                         SubagentTaskStatus::Running,
                         &call_id,
                         &fut_task_name,
+                        Some(agent_index),
                         Some(ev.message.clone()),
                     )
                     .await;
@@ -341,6 +343,7 @@ async fn run_subagent_task(
         status,
         &call_id_for_result,
         &name,
+        Some(agent_index),
         summary,
     )
     .await;
@@ -376,11 +379,13 @@ async fn send_subagent_update(
     status: SubagentTaskStatus,
     call_id: &str,
     task_name: &str,
+    agent_index: Option<usize>,
     summary: Option<String>,
 ) {
     let event = EventMsg::SubagentTaskUpdate(SubagentTaskUpdateEvent {
         call_id: call_id.to_string(),
         task: task_name.to_string(),
+        agent_index: agent_index.map(|i| i as i64),
         status,
         summary,
     });

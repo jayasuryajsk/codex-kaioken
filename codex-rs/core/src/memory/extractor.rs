@@ -8,10 +8,13 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use tokio::sync::Mutex;
-use tracing::{debug, info, warn};
+use tracing::debug;
+use tracing::info;
+use tracing::warn;
 
 use super::store::MemoryStore;
-use super::types::{Memory, MemoryType};
+use super::types::Memory;
+use super::types::MemoryType;
 
 /// Tracks recent command failures to detect when they get fixed.
 #[derive(Debug)]
@@ -87,14 +90,24 @@ impl MemoryExtractor {
 
         // Extract location memory
         if let Some(location) = self.extract_location_from_file(path, content) {
-            if !self.store.exists_similar(&location.content, MemoryType::Location).await.unwrap_or(true) {
+            if !self
+                .store
+                .exists_similar(&location.content, MemoryType::Location)
+                .await
+                .unwrap_or(true)
+            {
                 memories.push(location);
             }
         }
 
         // Extract patterns from file content
         for pattern in self.extract_patterns_from_file(path, content) {
-            if !self.store.exists_similar(&pattern.content, MemoryType::Pattern).await.unwrap_or(true) {
+            if !self
+                .store
+                .exists_similar(&pattern.content, MemoryType::Pattern)
+                .await
+                .unwrap_or(true)
+            {
                 memories.push(pattern);
             }
         }
@@ -110,11 +123,7 @@ impl MemoryExtractor {
     }
 
     /// Called when a file is edited.
-    pub async fn on_file_edit(
-        &self,
-        path: &std::path::Path,
-        _diff: &str,
-    ) -> Vec<Memory> {
+    pub async fn on_file_edit(&self, path: &std::path::Path, _diff: &str) -> Vec<Memory> {
         let mut memories = Vec::new();
 
         // Extract location if this is a significant file
@@ -126,7 +135,12 @@ impl MemoryExtractor {
         .with_context("from file edit");
 
         // Only store if not already known
-        if !self.store.exists_similar(&location.content, MemoryType::Location).await.unwrap_or(true) {
+        if !self
+            .store
+            .exists_similar(&location.content, MemoryType::Location)
+            .await
+            .unwrap_or(true)
+        {
             if let Err(e) = self.store.insert(&location).await {
                 warn!("Failed to store edit location: {}", e);
             } else {
@@ -178,7 +192,8 @@ impl MemoryExtractor {
 
         // Clean up old failures
         let now = Instant::now();
-        failures.retain(|_, f| now.duration_since(f.timestamp).as_secs() < self.max_failure_age_secs);
+        failures
+            .retain(|_, f| now.duration_since(f.timestamp).as_secs() < self.max_failure_age_secs);
 
         // Compute a key based on the command type
         let key = self.failure_key(command);
@@ -216,7 +231,11 @@ impl MemoryExtractor {
                 ))
                 .with_importance(0.95); // Lessons from fixes are very important
 
-            info!("Learned fix: {} -> {}", truncate(&failed.command, 30), truncate(command, 30));
+            info!(
+                "Learned fix: {} -> {}",
+                truncate(&failed.command, 30),
+                truncate(command, 30)
+            );
             return Some(memory);
         }
 
@@ -238,15 +257,23 @@ impl MemoryExtractor {
         cwd: &std::path::Path,
     ) -> Option<Memory> {
         // Detect package manager
-        if command.starts_with("npm ") || command.starts_with("pnpm ") || command.starts_with("yarn ") {
+        if command.starts_with("npm ")
+            || command.starts_with("pnpm ")
+            || command.starts_with("yarn ")
+        {
             let pm = command.split_whitespace().next()?;
             let content = format!("Project uses {} as package manager", pm);
 
-            if !self.store.exists_similar(&content, MemoryType::Fact).await.ok()? {
+            if !self
+                .store
+                .exists_similar(&content, MemoryType::Fact)
+                .await
+                .ok()?
+            {
                 return Some(
                     Memory::new(MemoryType::Fact, content)
                         .with_source_file(cwd.to_path_buf())
-                        .with_context(format!("detected from running: {}", truncate(command, 50)))
+                        .with_context(format!("detected from running: {}", truncate(command, 50))),
                 );
             }
         }
@@ -254,10 +281,14 @@ impl MemoryExtractor {
         // Detect build tools
         if command.starts_with("cargo ") {
             let content = "Project uses Cargo/Rust".to_string();
-            if !self.store.exists_similar(&content, MemoryType::Fact).await.ok()? {
+            if !self
+                .store
+                .exists_similar(&content, MemoryType::Fact)
+                .await
+                .ok()?
+            {
                 return Some(
-                    Memory::new(MemoryType::Fact, content)
-                        .with_source_file(cwd.to_path_buf())
+                    Memory::new(MemoryType::Fact, content).with_source_file(cwd.to_path_buf()),
                 );
             }
         }
@@ -266,13 +297,23 @@ impl MemoryExtractor {
         if command.contains("test") {
             if output.contains("jest") || output.contains("PASS") || output.contains("FAIL") {
                 let content = "Project uses Jest for testing".to_string();
-                if !self.store.exists_similar(&content, MemoryType::Fact).await.ok()? {
+                if !self
+                    .store
+                    .exists_similar(&content, MemoryType::Fact)
+                    .await
+                    .ok()?
+                {
                     return Some(Memory::new(MemoryType::Fact, content));
                 }
             }
             if output.contains("pytest") || output.contains("collected") {
                 let content = "Project uses pytest for testing".to_string();
-                if !self.store.exists_similar(&content, MemoryType::Fact).await.ok()? {
+                if !self
+                    .store
+                    .exists_similar(&content, MemoryType::Fact)
+                    .await
+                    .ok()?
+                {
                     return Some(Memory::new(MemoryType::Fact, content));
                 }
             }
@@ -320,15 +361,29 @@ impl MemoryExtractor {
         let filename = path.file_name()?.to_string_lossy();
 
         // Detect file purpose from name and content
-        let purpose = if filename.contains("test") || content.contains("#[test]") || content.contains("describe(") {
+        let purpose = if filename.contains("test")
+            || content.contains("#[test]")
+            || content.contains("describe(")
+        {
             Some("tests")
-        } else if filename.contains("config") || filename.ends_with(".toml") || filename.ends_with(".json") {
+        } else if filename.contains("config")
+            || filename.ends_with(".toml")
+            || filename.ends_with(".json")
+        {
             Some("configuration")
-        } else if filename.contains("route") || filename.contains("handler") || content.contains("Router") {
+        } else if filename.contains("route")
+            || filename.contains("handler")
+            || content.contains("Router")
+        {
             Some("routing/handlers")
-        } else if filename.contains("model") || content.contains("struct") && content.contains("derive") {
+        } else if filename.contains("model")
+            || content.contains("struct") && content.contains("derive")
+        {
             Some("data models")
-        } else if filename.contains("auth") || content.contains("authenticate") || content.contains("login") {
+        } else if filename.contains("auth")
+            || content.contains("authenticate")
+            || content.contains("login")
+        {
             Some("authentication")
         } else {
             None
@@ -340,7 +395,7 @@ impl MemoryExtractor {
         Some(
             Memory::new(MemoryType::Location, content_str)
                 .with_source_file(path.to_path_buf())
-                .with_context(format!("detected from {}", filename))
+                .with_context(format!("detected from {}", filename)),
         )
     }
 
@@ -355,7 +410,7 @@ impl MemoryExtractor {
                     MemoryType::Pattern,
                     "Tests are in __tests__ directories".to_string(),
                 )
-                .with_source_file(path.to_path_buf())
+                .with_source_file(path.to_path_buf()),
             );
         }
 
@@ -369,7 +424,7 @@ impl MemoryExtractor {
                             MemoryType::Pattern,
                             "Functions return Result<T, E> for error handling".to_string(),
                         )
-                        .with_source_file(path.to_path_buf())
+                        .with_source_file(path.to_path_buf()),
                     );
                 }
             }
@@ -382,7 +437,7 @@ impl MemoryExtractor {
                     MemoryType::Pattern,
                     "Codebase uses async/await patterns".to_string(),
                 )
-                .with_source_file(path.to_path_buf())
+                .with_source_file(path.to_path_buf()),
             );
         }
 
@@ -414,9 +469,13 @@ impl MemoryExtractor {
         let lower = input.to_lowercase();
         if lower.contains("always ") || lower.contains("never ") || lower.contains("should ") {
             (MemoryType::Preference, input.to_string())
-        } else if lower.contains("because") || lower.contains("decided") || lower.contains("chose") {
+        } else if lower.contains("because") || lower.contains("decided") || lower.contains("chose")
+        {
             (MemoryType::Decision, input.to_string())
-        } else if lower.contains("learned") || lower.contains("don't forget") || lower.contains("remember to") {
+        } else if lower.contains("learned")
+            || lower.contains("don't forget")
+            || lower.contains("remember to")
+        {
             (MemoryType::Lesson, input.to_string())
         } else if lower.contains(" in ") && (lower.contains("src/") || lower.contains("lib/")) {
             (MemoryType::Location, input.to_string())
@@ -428,18 +487,14 @@ impl MemoryExtractor {
 
 /// Truncate a string to a maximum length.
 fn truncate(s: &str, max_len: usize) -> &str {
-    if s.len() <= max_len {
-        s
-    } else {
-        &s[..max_len]
-    }
+    if s.len() <= max_len { s } else { &s[..max_len] }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use crate::memory::types::MemoryConfig;
+    use tempfile::TempDir;
 
     async fn create_test_extractor() -> (MemoryExtractor, TempDir) {
         let temp_dir = TempDir::new().unwrap();
@@ -471,7 +526,13 @@ mod tests {
 
         // Record a failure
         extractor
-            .on_exec_complete("npm install", 1, "", "ENOENT: npm not found", std::path::Path::new("/"))
+            .on_exec_complete(
+                "npm install",
+                1,
+                "",
+                "ENOENT: npm not found",
+                std::path::Path::new("/"),
+            )
             .await;
 
         // Check that it was recorded

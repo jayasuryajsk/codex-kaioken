@@ -5,9 +5,13 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use fastembed::{EmbeddingModel, InitOptions, TextEmbedding};
+use fastembed::EmbeddingModel;
+use fastembed::InitOptions;
+use fastembed::TextEmbedding;
 use tokio::sync::OnceCell;
-use tracing::{debug, info, warn};
+use tracing::debug;
+use tracing::info;
+use tracing::warn;
 
 /// Embedding vector type (f32 for compatibility with most models).
 pub type EmbeddingVector = Vec<f32>;
@@ -40,7 +44,10 @@ impl EmbeddingService {
                     }
                     Err(e) => {
                         warn!("Failed to initialize embedding model: {}", e);
-                        Err(anyhow::anyhow!("Failed to initialize embedding model: {}", e))
+                        Err(anyhow::anyhow!(
+                            "Failed to initialize embedding model: {}",
+                            e
+                        ))
                     }
                 }
             })
@@ -122,19 +129,12 @@ impl EmbeddingService {
 
 /// Truncate text for logging.
 fn truncate(s: &str, max_len: usize) -> &str {
-    if s.len() <= max_len {
-        s
-    } else {
-        &s[..max_len]
-    }
+    if s.len() <= max_len { s } else { &s[..max_len] }
 }
 
 /// Serialize an embedding vector to bytes for storage.
 pub fn embedding_to_bytes(embedding: &EmbeddingVector) -> Vec<u8> {
-    embedding
-        .iter()
-        .flat_map(|f| f.to_le_bytes())
-        .collect()
+    embedding.iter().flat_map(|f| f.to_le_bytes()).collect()
 }
 
 /// Deserialize an embedding vector from bytes.

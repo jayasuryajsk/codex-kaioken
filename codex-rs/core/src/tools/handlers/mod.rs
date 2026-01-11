@@ -13,9 +13,9 @@ mod test_sync;
 mod unified_exec;
 mod view_image;
 
-pub use plan::PLAN_TOOL;
 pub use memory::MEMORY_RECALL_TOOL;
 pub use memory::MEMORY_SAVE_TOOL;
+pub use plan::PLAN_TOOL;
 
 pub use apply_patch::ApplyPatchHandler;
 pub use grep_files::GrepFilesHandler;

@@ -272,7 +272,14 @@ fn context_window_line(
     // Show token usage if available
     if let (Some(input), Some(output)) = (input_tokens, output_tokens) {
         spans.push(" · ".dim());
-        spans.push(Span::from(format!("↑{} ↓{}", format_token_count(input), format_token_count(output))).dim());
+        spans.push(
+            Span::from(format!(
+                "↑{} ↓{}",
+                format_token_count(input),
+                format_token_count(output)
+            ))
+            .dim(),
+        );
     }
 
     if let Some(semantic_span) = semantic_search_status_span(status, spinner, message) {

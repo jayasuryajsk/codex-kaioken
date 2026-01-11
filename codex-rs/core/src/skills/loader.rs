@@ -323,7 +323,8 @@ fn extract_frontmatter(contents: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{ConfigOverrides, ConfigToml};
+    use crate::config::ConfigOverrides;
+    use crate::config::ConfigToml;
     use codex_protocol::protocol::SkillScope;
     use pretty_assertions::assert_eq;
     use std::path::Path;

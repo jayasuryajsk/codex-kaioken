@@ -94,8 +94,7 @@ mod tests {
 
         // Insert some memories
         for i in 0..5 {
-            let memory = Memory::new(MemoryType::Fact, format!("fact {}", i))
-                .with_importance(0.5);
+            let memory = Memory::new(MemoryType::Fact, format!("fact {}", i)).with_importance(0.5);
             store.insert(&memory).await.unwrap();
         }
 
@@ -109,8 +108,8 @@ mod tests {
         let (manager, store, _dir) = create_test_decay_manager().await;
 
         // Insert a lesson with high importance
-        let lesson = Memory::new(MemoryType::Lesson, "important lesson".to_string())
-            .with_importance(0.9);
+        let lesson =
+            Memory::new(MemoryType::Lesson, "important lesson".to_string()).with_importance(0.9);
         let id = lesson.id.clone();
         store.insert(&lesson).await.unwrap();
 

@@ -912,7 +912,8 @@ impl App {
                         Some("Note: Some features require a restart to take effect.".to_string()),
                     );
                 } else {
-                    self.chat_widget.add_error_message(format!("Unknown feature: {}", key));
+                    self.chat_widget
+                        .add_error_message(format!("Unknown feature: {}", key));
                 }
             }
             AppEvent::KillTerminal { call_id } => {

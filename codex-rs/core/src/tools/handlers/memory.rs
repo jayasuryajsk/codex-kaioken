@@ -88,9 +88,7 @@ impl ToolHandler for MemoryRecallHandler {
 
     async fn handle(&self, invocation: ToolInvocation) -> Result<ToolOutput, FunctionCallError> {
         let ToolInvocation {
-            session,
-            payload,
-            ..
+            session, payload, ..
         } = invocation;
 
         let arguments = match payload {
@@ -123,9 +121,7 @@ impl ToolHandler for MemoryRecallHandler {
 
         // Search memories
         let limit = args.limit.unwrap_or(5).min(20);
-        let memories = memory_manager
-            .search(&args.query, type_filter, limit)
-            .await;
+        let memories = memory_manager.search(&args.query, type_filter, limit).await;
 
         if memories.is_empty() {
             return Ok(ToolOutput::Function {
@@ -140,12 +136,7 @@ impl ToolHandler for MemoryRecallHandler {
         for (i, scored) in memories.iter().enumerate() {
             let mem = &scored.memory;
             let type_label = format!("{:?}", mem.memory_type).to_uppercase();
-            output.push_str(&format!(
-                "{}. [{}] {}\n",
-                i + 1,
-                type_label,
-                mem.content
-            ));
+            output.push_str(&format!("{}. [{}] {}\n", i + 1, type_label, mem.content));
             if let Some(ref ctx) = mem.context {
                 output.push_str(&format!("   Context: {}\n", ctx));
             }
@@ -237,9 +228,7 @@ impl ToolHandler for MemorySaveHandler {
 
     async fn handle(&self, invocation: ToolInvocation) -> Result<ToolOutput, FunctionCallError> {
         let ToolInvocation {
-            session,
-            payload,
-            ..
+            session, payload, ..
         } = invocation;
 
         let arguments = match payload {
@@ -281,7 +270,12 @@ impl ToolHandler for MemorySaveHandler {
         // Save the memory
         let source_path = args.source_file.map(std::path::PathBuf::from);
         match memory_manager
-            .save_explicit(memory_type, &args.content, args.context.as_deref(), source_path.as_deref())
+            .save_explicit(
+                memory_type,
+                &args.content,
+                args.context.as_deref(),
+                source_path.as_deref(),
+            )
             .await
         {
             Ok(_) => Ok(ToolOutput::Function {

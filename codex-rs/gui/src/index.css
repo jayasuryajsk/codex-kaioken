@@ -1,0 +1,527 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* ===== LIGHT THEMES ===== */
+
+  /* Snow - Clean, minimal white */
+  :root,
+  .theme-snow {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --primary: 220 90% 56%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 220 9% 46%;
+    --accent: 220 90% 56%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --ring: 220 90% 56%;
+    --radius: 0.5rem;
+    --git-added: 142 70% 35%;
+    --git-removed: 346 80% 45%;
+    /* Sidebar */
+    --sidebar: 220 14% 98%;
+    --sidebar-foreground: 240 10% 3.9%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-accent: 220 14% 93%;
+    /* Code highlighting - cool blue tones */
+    --code-keyword: 220 90% 50%;
+    --code-string: 142 60% 35%;
+    --code-comment: 220 10% 55%;
+    --code-function: 280 70% 50%;
+    --code-number: 25 90% 50%;
+    --code-operator: 240 10% 30%;
+  }
+
+  /* Cream - Warm ivory tones */
+  .theme-cream {
+    --background: 40 33% 98%;
+    --foreground: 20 14% 12%;
+    --muted: 36 33% 94%;
+    --muted-foreground: 25 10% 45%;
+    --card: 40 40% 99%;
+    --card-foreground: 20 14% 12%;
+    --popover: 40 40% 99%;
+    --popover-foreground: 20 14% 12%;
+    --border: 32 20% 88%;
+    --input: 36 33% 94%;
+    --primary: 25 95% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 36 33% 94%;
+    --secondary-foreground: 25 10% 45%;
+    --accent: 25 95% 53%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --ring: 25 95% 53%;
+    --git-added: 142 70% 35%;
+    --git-removed: 346 80% 45%;
+    /* Sidebar */
+    --sidebar: 36 33% 96%;
+    --sidebar-foreground: 20 14% 12%;
+    --sidebar-border: 32 20% 88%;
+    --sidebar-accent: 36 33% 91%;
+    /* Code highlighting - warm sepia tones */
+    --code-keyword: 25 80% 45%;
+    --code-string: 142 50% 35%;
+    --code-comment: 30 20% 50%;
+    --code-function: 340 60% 45%;
+    --code-number: 15 85% 50%;
+    --code-operator: 20 14% 30%;
+  }
+
+  /* Sage - Calming green-gray */
+  .theme-sage {
+    --background: 120 20% 97%;
+    --foreground: 120 10% 12%;
+    --muted: 120 15% 93%;
+    --muted-foreground: 120 5% 45%;
+    --card: 120 25% 98%;
+    --card-foreground: 120 10% 12%;
+    --popover: 120 25% 98%;
+    --popover-foreground: 120 10% 12%;
+    --border: 120 10% 88%;
+    --input: 120 15% 93%;
+    --primary: 142 70% 40%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 120 15% 93%;
+    --secondary-foreground: 120 5% 45%;
+    --accent: 142 70% 40%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --ring: 142 70% 40%;
+    --git-added: 142 70% 35%;
+    --git-removed: 346 80% 45%;
+    /* Sidebar */
+    --sidebar: 120 15% 95%;
+    --sidebar-foreground: 120 10% 12%;
+    --sidebar-border: 120 10% 88%;
+    --sidebar-accent: 120 15% 90%;
+    /* Code highlighting - natural green tones */
+    --code-keyword: 160 60% 35%;
+    --code-string: 90 50% 35%;
+    --code-comment: 120 10% 50%;
+    --code-function: 180 50% 35%;
+    --code-number: 30 70% 45%;
+    --code-operator: 120 10% 30%;
+  }
+
+  /* Quiet Light - VS Code inspired, soft warm tones */
+  .theme-quiet-light {
+    --background: 60 30% 98%;
+    --foreground: 0 0% 20%;
+    --muted: 50 20% 94%;
+    --muted-foreground: 0 0% 45%;
+    --card: 60 25% 99%;
+    --card-foreground: 0 0% 20%;
+    --popover: 60 25% 99%;
+    --popover-foreground: 0 0% 20%;
+    --border: 45 15% 88%;
+    --input: 50 20% 94%;
+    --primary: 210 50% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 50 20% 94%;
+    --secondary-foreground: 0 0% 45%;
+    --accent: 210 50% 45%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 65% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --ring: 210 50% 45%;
+    --git-added: 142 50% 38%;
+    --git-removed: 0 60% 48%;
+    /* Sidebar */
+    --sidebar: 50 20% 96%;
+    --sidebar-foreground: 0 0% 20%;
+    --sidebar-border: 45 15% 88%;
+    --sidebar-accent: 50 20% 91%;
+    /* Code highlighting - muted, easy on eyes */
+    --code-keyword: 300 30% 45%;
+    --code-string: 90 40% 38%;
+    --code-comment: 0 0% 55%;
+    --code-function: 30 60% 45%;
+    --code-number: 20 70% 45%;
+    --code-operator: 0 0% 35%;
+  }
+
+  /* Solarized Light - Classic readable light theme */
+  .theme-solarized-light {
+    --background: 44 87% 94%;
+    --foreground: 192 81% 14%;
+    --muted: 44 60% 89%;
+    --muted-foreground: 194 14% 40%;
+    --card: 44 87% 96%;
+    --card-foreground: 192 81% 14%;
+    --popover: 44 87% 96%;
+    --popover-foreground: 192 81% 14%;
+    --border: 44 40% 84%;
+    --input: 44 60% 89%;
+    --primary: 205 69% 49%;
+    --primary-foreground: 44 87% 94%;
+    --secondary: 44 60% 89%;
+    --secondary-foreground: 194 14% 40%;
+    --accent: 205 69% 49%;
+    --accent-foreground: 44 87% 94%;
+    --destructive: 1 71% 52%;
+    --destructive-foreground: 44 87% 94%;
+    --ring: 205 69% 49%;
+    --git-added: 68 100% 30%;
+    --git-removed: 1 71% 52%;
+    /* Sidebar */
+    --sidebar: 44 60% 91%;
+    --sidebar-foreground: 192 81% 14%;
+    --sidebar-border: 44 40% 84%;
+    --sidebar-accent: 44 50% 86%;
+    /* Code highlighting - solarized palette */
+    --code-keyword: 18 80% 44%;
+    --code-string: 68 100% 30%;
+    --code-comment: 194 14% 50%;
+    --code-function: 205 69% 49%;
+    --code-number: 175 59% 40%;
+    --code-operator: 192 81% 20%;
+  }
+
+  /* GitHub Light - Clean minimal style */
+  .theme-github-light {
+    --background: 210 17% 98%;
+    --foreground: 215 14% 20%;
+    --muted: 210 14% 94%;
+    --muted-foreground: 215 10% 48%;
+    --card: 210 17% 99%;
+    --card-foreground: 215 14% 20%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 14% 20%;
+    --border: 210 12% 89%;
+    --input: 210 14% 94%;
+    --primary: 215 90% 52%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 14% 94%;
+    --secondary-foreground: 215 10% 48%;
+    --accent: 215 90% 52%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --ring: 215 90% 52%;
+    --git-added: 142 55% 37%;
+    --git-removed: 0 72% 51%;
+    /* Sidebar */
+    --sidebar: 210 14% 96%;
+    --sidebar-foreground: 215 14% 20%;
+    --sidebar-border: 210 12% 89%;
+    --sidebar-accent: 210 14% 91%;
+    /* Code highlighting - GitHub style */
+    --code-keyword: 332 65% 45%;
+    --code-string: 197 70% 40%;
+    --code-comment: 215 10% 55%;
+    --code-function: 264 50% 50%;
+    --code-number: 197 70% 40%;
+    --code-operator: 215 14% 30%;
+  }
+
+  /* ===== DARK THEMES ===== */
+
+  /* Midnight - Deep blue-black */
+  .theme-midnight,
+  .dark {
+    --background: 222 47% 6%;
+    --foreground: 210 40% 98%;
+    --muted: 217 33% 12%;
+    --muted-foreground: 215 20% 55%;
+    --card: 222 47% 8%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222 47% 10%;
+    --popover-foreground: 210 40% 98%;
+    --border: 217 33% 18%;
+    --input: 217 33% 12%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 33% 15%;
+    --secondary-foreground: 210 40% 98%;
+    --accent: 217 91% 60%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --ring: 217 91% 60%;
+    --git-added: 142 70% 50%;
+    --git-removed: 346 80% 50%;
+    /* Sidebar */
+    --sidebar: 222 47% 5%;
+    --sidebar-foreground: 210 40% 98%;
+    --sidebar-border: 217 33% 12%;
+    --sidebar-accent: 217 33% 10%;
+    /* Code highlighting - vibrant night blues */
+    --code-keyword: 217 90% 65%;
+    --code-string: 142 60% 55%;
+    --code-comment: 215 20% 50%;
+    --code-function: 280 80% 70%;
+    --code-number: 35 90% 60%;
+    --code-operator: 210 30% 70%;
+  }
+
+  /* Obsidian - Pure dark, high contrast */
+  .theme-obsidian {
+    --background: 0 0% 4%;
+    --foreground: 0 0% 95%;
+    --muted: 0 0% 10%;
+    --muted-foreground: 0 0% 55%;
+    --card: 0 0% 6%;
+    --card-foreground: 0 0% 95%;
+    --popover: 0 0% 8%;
+    --popover-foreground: 0 0% 95%;
+    --border: 0 0% 18%;
+    --input: 0 0% 10%;
+    --primary: 0 0% 95%;
+    --primary-foreground: 0 0% 4%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 95%;
+    --accent: 0 0% 95%;
+    --accent-foreground: 0 0% 4%;
+    --destructive: 0 70% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --ring: 0 0% 60%;
+    --git-added: 142 70% 50%;
+    --git-removed: 346 80% 50%;
+    /* Sidebar */
+    --sidebar: 0 0% 3%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-border: 0 0% 12%;
+    --sidebar-accent: 0 0% 8%;
+    /* Code highlighting - high contrast monochrome */
+    --code-keyword: 0 0% 80%;
+    --code-string: 142 50% 55%;
+    --code-comment: 0 0% 45%;
+    --code-function: 0 0% 75%;
+    --code-number: 35 70% 55%;
+    --code-operator: 0 0% 65%;
+  }
+
+  /* One Dark - Atom inspired, soft and balanced */
+  .theme-one-dark {
+    --background: 220 13% 18%;
+    --foreground: 219 14% 76%;
+    --muted: 220 13% 22%;
+    --muted-foreground: 219 10% 53%;
+    --card: 220 13% 20%;
+    --card-foreground: 219 14% 76%;
+    --popover: 220 13% 22%;
+    --popover-foreground: 219 14% 76%;
+    --border: 220 13% 26%;
+    --input: 220 13% 22%;
+    --primary: 207 82% 66%;
+    --primary-foreground: 220 13% 18%;
+    --secondary: 220 13% 24%;
+    --secondary-foreground: 219 14% 76%;
+    --accent: 207 82% 66%;
+    --accent-foreground: 220 13% 18%;
+    --destructive: 355 65% 65%;
+    --destructive-foreground: 220 13% 18%;
+    --ring: 207 82% 66%;
+    --git-added: 95 38% 62%;
+    --git-removed: 355 65% 65%;
+    /* Sidebar */
+    --sidebar: 220 13% 15%;
+    --sidebar-foreground: 219 14% 76%;
+    --sidebar-border: 220 13% 22%;
+    --sidebar-accent: 220 13% 20%;
+    /* Code highlighting - One Dark palette */
+    --code-keyword: 286 60% 67%;
+    --code-string: 95 38% 62%;
+    --code-comment: 219 10% 48%;
+    --code-function: 207 82% 66%;
+    --code-number: 29 54% 61%;
+    --code-operator: 187 47% 55%;
+  }
+
+  /* Nord - Cool, muted arctic palette */
+  .theme-nord {
+    --background: 220 16% 22%;
+    --foreground: 218 27% 88%;
+    --muted: 220 16% 28%;
+    --muted-foreground: 219 20% 60%;
+    --card: 220 16% 24%;
+    --card-foreground: 218 27% 88%;
+    --popover: 220 16% 26%;
+    --popover-foreground: 218 27% 88%;
+    --border: 220 16% 32%;
+    --input: 220 16% 28%;
+    --primary: 193 43% 67%;
+    --primary-foreground: 220 16% 22%;
+    --secondary: 220 16% 30%;
+    --secondary-foreground: 218 27% 88%;
+    --accent: 193 43% 67%;
+    --accent-foreground: 220 16% 22%;
+    --destructive: 354 42% 56%;
+    --destructive-foreground: 220 16% 22%;
+    --ring: 193 43% 67%;
+    --git-added: 92 28% 65%;
+    --git-removed: 354 42% 56%;
+    /* Sidebar */
+    --sidebar: 220 16% 18%;
+    --sidebar-foreground: 218 27% 88%;
+    --sidebar-border: 220 16% 26%;
+    --sidebar-accent: 220 16% 24%;
+    /* Code highlighting - Nord palette */
+    --code-keyword: 311 20% 63%;
+    --code-string: 92 28% 65%;
+    --code-comment: 220 16% 50%;
+    --code-function: 193 43% 67%;
+    --code-number: 14 51% 63%;
+    --code-operator: 179 25% 65%;
+  }
+
+  /* Dracula Soft - Purple-tinted, softer contrast */
+  .theme-dracula {
+    --background: 231 15% 18%;
+    --foreground: 60 30% 92%;
+    --muted: 231 15% 24%;
+    --muted-foreground: 230 10% 55%;
+    --card: 231 15% 20%;
+    --card-foreground: 60 30% 92%;
+    --popover: 231 15% 22%;
+    --popover-foreground: 60 30% 92%;
+    --border: 231 15% 30%;
+    --input: 231 15% 24%;
+    --primary: 265 89% 72%;
+    --primary-foreground: 231 15% 18%;
+    --secondary: 231 15% 26%;
+    --secondary-foreground: 60 30% 92%;
+    --accent: 265 89% 72%;
+    --accent-foreground: 231 15% 18%;
+    --destructive: 0 100% 67%;
+    --destructive-foreground: 231 15% 18%;
+    --ring: 265 89% 72%;
+    --git-added: 135 94% 62%;
+    --git-removed: 0 100% 67%;
+    /* Sidebar */
+    --sidebar: 231 15% 14%;
+    --sidebar-foreground: 60 30% 92%;
+    --sidebar-border: 231 15% 22%;
+    --sidebar-accent: 231 15% 20%;
+    /* Code highlighting - Dracula palette (softened) */
+    --code-keyword: 326 100% 70%;
+    --code-string: 65 92% 70%;
+    --code-comment: 230 10% 50%;
+    --code-function: 135 94% 62%;
+    --code-number: 265 89% 72%;
+    --code-operator: 191 97% 72%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground tracking-tight antialiased select-none cursor-default;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+    font-size: 13px;
+    /* Slightly punchier font size */
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Monospace for code/input */
+  code,
+  pre,
+  .font-mono,
+  textarea {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted));
+  border-radius: 5px;
+  border: 3px solid hsl(var(--background));
+}
+
+/* Shimmer animation for thinking text */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Blinking cursor animation */
+@keyframes blink {
+  0%, 50% {
+    opacity: 1;
+  }
+  51%, 100% {
+    opacity: 0;
+  }
+}
+
+.animate-blink {
+  animation: blink 1s step-end infinite;
+}
+
+/* Sound equalizer animation */
+@keyframes equalizer {
+  0%, 100% {
+    height: 4px;
+  }
+  50% {
+    height: 14px;
+  }
+}
+
+.animate-equalizer-1 {
+  animation: equalizer 0.8s ease-in-out infinite;
+}
+
+.animate-equalizer-2 {
+  animation: equalizer 0.8s ease-in-out infinite 0.2s;
+}
+
+.animate-equalizer-3 {
+  animation: equalizer 0.8s ease-in-out infinite 0.4s;
+}
+
+.animate-equalizer-4 {
+  animation: equalizer 0.8s ease-in-out infinite 0.6s;
+}
+
+.shimmer-text {
+  /* Light mode: black text with gray shimmer */
+  background: linear-gradient(90deg,
+      #18181b 0%,
+      #71717a 50%,
+      #18181b 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+.dark .shimmer-text {
+  /* Dark mode: light text with white shimmer */
+  background: linear-gradient(90deg,
+      #a1a1aa 0%,
+      #fafafa 50%,
+      #a1a1aa 100%);
+  background-size: 200% 100%;
+}

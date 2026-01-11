@@ -9,7 +9,10 @@ use std::sync::Arc;
 use tracing::debug;
 
 use super::store::MemoryStore;
-use super::types::{Memory, MemoryConfig, MemoryType, ScoredMemory};
+use super::types::Memory;
+use super::types::MemoryConfig;
+use super::types::MemoryType;
+use super::types::ScoredMemory;
 
 // PathBuf is still used in RetrievalContext
 
@@ -103,7 +106,11 @@ impl MemoryRetriever {
             let _ = self.store.mark_used(&sm.memory.id).await;
         }
 
-        debug!("Retrieved {} memories for query: {}", result.len(), truncate(&context.query, 30));
+        debug!(
+            "Retrieved {} memories for query: {}",
+            result.len(),
+            truncate(&context.query, 30)
+        );
         result
     }
 
@@ -128,7 +135,10 @@ impl MemoryRetriever {
     /// Keyword-based search fallback.
     async fn keyword_search(&self, keywords: &[String]) -> Vec<Memory> {
         let keyword_refs: Vec<&str> = keywords.iter().map(|s| s.as_str()).collect();
-        self.store.search_by_keywords(&keyword_refs).await.unwrap_or_default()
+        self.store
+            .search_by_keywords(&keyword_refs)
+            .await
+            .unwrap_or_default()
     }
 
     /// Get memories that should always be included (high importance lessons/decisions).
@@ -177,7 +187,11 @@ impl MemoryRetriever {
 
         // File relevance boost
         let file_boost = if let Some(ref source) = memory.source_file {
-            if context.active_files.iter().any(|f| f == source || f.starts_with(source.parent().unwrap_or(source))) {
+            if context
+                .active_files
+                .iter()
+                .any(|f| f == source || f.starts_with(source.parent().unwrap_or(source)))
+            {
                 1.3
             } else {
                 1.0
@@ -187,11 +201,8 @@ impl MemoryRetriever {
         };
 
         // Combine scores with weights
-        let combined = semantic * 0.35
-            + importance * 0.25
-            + recency * 0.15
-            + (frequency - 1.0) * 0.1
-            + 0.15; // base score
+        let combined =
+            semantic * 0.35 + importance * 0.25 + recency * 0.15 + (frequency - 1.0) * 0.1 + 0.15; // base score
 
         combined * type_boost * file_boost
     }
@@ -203,7 +214,8 @@ impl MemoryRetriever {
         }
 
         let mut result = Vec::with_capacity(k);
-        let mut type_counts: std::collections::HashMap<MemoryType, usize> = std::collections::HashMap::new();
+        let mut type_counts: std::collections::HashMap<MemoryType, usize> =
+            std::collections::HashMap::new();
         let max_per_type = (k / 3).max(2);
 
         // First pass: take top memories respecting type limits
@@ -230,18 +242,16 @@ impl MemoryRetriever {
     /// Extract keywords from a query.
     fn extract_keywords(&self, query: &str) -> Vec<String> {
         let stop_words = [
-            "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-            "have", "has", "had", "do", "does", "did", "will", "would", "could",
-            "should", "may", "might", "must", "shall", "can", "need", "dare",
-            "to", "of", "in", "for", "on", "with", "at", "by", "from", "as",
-            "into", "through", "during", "before", "after", "above", "below",
-            "between", "under", "again", "further", "then", "once", "here",
-            "there", "when", "where", "why", "how", "all", "each", "few",
-            "more", "most", "other", "some", "such", "no", "nor", "not", "only",
-            "own", "same", "so", "than", "too", "very", "just", "and", "but",
-            "or", "if", "because", "until", "while", "this", "that", "these",
-            "those", "what", "which", "who", "whom", "it", "its", "i", "me",
-            "my", "we", "our", "you", "your", "he", "his", "she", "her", "they",
+            "the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "have", "has",
+            "had", "do", "does", "did", "will", "would", "could", "should", "may", "might", "must",
+            "shall", "can", "need", "dare", "to", "of", "in", "for", "on", "with", "at", "by",
+            "from", "as", "into", "through", "during", "before", "after", "above", "below",
+            "between", "under", "again", "further", "then", "once", "here", "there", "when",
+            "where", "why", "how", "all", "each", "few", "more", "most", "other", "some", "such",
+            "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very", "just", "and",
+            "but", "or", "if", "because", "until", "while", "this", "that", "these", "those",
+            "what", "which", "who", "whom", "it", "its", "i", "me", "my", "we", "our", "you",
+            "your", "he", "his", "she", "her", "they",
         ];
 
         query
@@ -252,16 +262,11 @@ impl MemoryRetriever {
             .filter(|w| !w.is_empty())
             .collect()
     }
-
 }
 
 /// Truncate a string for logging.
 fn truncate(s: &str, max_len: usize) -> &str {
-    if s.len() <= max_len {
-        s
-    } else {
-        &s[..max_len]
-    }
+    if s.len() <= max_len { s } else { &s[..max_len] }
 }
 
 #[cfg(test)]
@@ -297,7 +302,11 @@ mod tests {
         let scored: Vec<ScoredMemory> = (0..10)
             .map(|i| ScoredMemory {
                 memory: Memory::new(
-                    if i % 2 == 0 { MemoryType::Fact } else { MemoryType::Pattern },
+                    if i % 2 == 0 {
+                        MemoryType::Fact
+                    } else {
+                        MemoryType::Pattern
+                    },
                     format!("memory {}", i),
                 ),
                 semantic_score: 1.0 - (i as f64 * 0.1),
@@ -311,8 +320,14 @@ mod tests {
         assert!(result.len() >= 4 && result.len() <= 5);
 
         // Should have mix of types
-        let facts = result.iter().filter(|s| s.memory.memory_type == MemoryType::Fact).count();
-        let patterns = result.iter().filter(|s| s.memory.memory_type == MemoryType::Pattern).count();
+        let facts = result
+            .iter()
+            .filter(|s| s.memory.memory_type == MemoryType::Fact)
+            .count();
+        let patterns = result
+            .iter()
+            .filter(|s| s.memory.memory_type == MemoryType::Pattern)
+            .count();
         assert!(facts > 0);
         assert!(patterns > 0);
     }

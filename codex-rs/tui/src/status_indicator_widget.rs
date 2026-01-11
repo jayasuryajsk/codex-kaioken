@@ -196,7 +196,14 @@ impl Renderable for StatusIndicatorWidget {
         // Show token counts if available
         if let (Some(input), Some(output)) = (self.input_tokens, self.output_tokens) {
             spans.push(" · ".dim());
-            spans.push(format!("↑{} ↓{}", format_token_count(input), format_token_count(output)).dim());
+            spans.push(
+                format!(
+                    "↑{} ↓{}",
+                    format_token_count(input),
+                    format_token_count(output)
+                )
+                .dim(),
+            );
         }
 
         Line::from(spans).render_ref(area, buf);
