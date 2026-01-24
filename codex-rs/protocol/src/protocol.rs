@@ -642,8 +642,6 @@ pub struct SubagentTaskUpdateEvent {
     pub call_id: String,
     /// Task label provided by the tool arguments.
     pub task: String,
-    /// Optional index of the subagent (0-based).
-    pub agent_index: Option<i64>,
     /// Current status of the task.
     pub status: SubagentTaskStatus,
     /// Optional short summary or last output line.

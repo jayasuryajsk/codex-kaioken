@@ -1,1 +1,0 @@
-{"default":{"identifier":"default","description":"Default capabilities for the main window","local":true,"windows":["main"],"permissions":["core:default","core:event:default","core:window:default","dialog:default","shell:default",{"identifier":"shell:allow-execute","allow":[{"args":true,"cmd":"git","name":"git"}]}]}}

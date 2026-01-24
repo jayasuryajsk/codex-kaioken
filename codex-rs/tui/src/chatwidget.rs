@@ -197,11 +197,7 @@ struct RunningCommand {
 }
 
 impl RunningCommand {
-    fn new(
-        command: Vec<String>,
-        parsed_cmd: Vec<ParsedCommand>,
-        source: ExecCommandSource,
-    ) -> Self {
+    fn new(command: Vec<String>, parsed_cmd: Vec<ParsedCommand>, source: ExecCommandSource) -> Self {
         Self {
             command,
             parsed_cmd,
@@ -224,17 +220,12 @@ impl RunningCommand {
 
     fn display_name(&self) -> String {
         self.name.clone().unwrap_or_else(|| {
-            self.command
-                .first()
-                .map(|s| s.clone())
-                .unwrap_or_else(|| "terminal".to_string())
+            self.command.first().map(|s| s.clone()).unwrap_or_else(|| "terminal".to_string())
         })
     }
 
     fn elapsed(&self) -> Duration {
-        self.finished_at
-            .unwrap_or_else(Instant::now)
-            .duration_since(self.started_at)
+        self.finished_at.unwrap_or_else(Instant::now).duration_since(self.started_at)
     }
 
     fn should_auto_cleanup(&self) -> bool {
@@ -1473,30 +1464,24 @@ impl ChatWidget {
     pub(crate) fn handle_exec_end_now(&mut self, ev: ExecCommandEndEvent) {
         // Update the running command's status instead of removing immediately
         // This allows /ps to show finished terminals until auto-cleanup
-        let (command, parsed, source, terminal_name) =
-            if let Some(rc) = self.running_commands.get_mut(&ev.call_id) {
-                rc.finished_at = Some(std::time::Instant::now());
-                rc.exit_code = Some(ev.exit_code);
-                rc.status = if ev.exit_code == 0 {
-                    TerminalStatus::Finished
-                } else {
-                    TerminalStatus::Error
-                };
-                let name = rc.display_name();
-                (
-                    rc.command.clone(),
-                    rc.parsed_cmd.clone(),
-                    rc.source,
-                    Some(name),
-                )
+        let (command, parsed, source, terminal_name) = if let Some(rc) = self.running_commands.get_mut(&ev.call_id) {
+            rc.finished_at = Some(std::time::Instant::now());
+            rc.exit_code = Some(ev.exit_code);
+            rc.status = if ev.exit_code == 0 {
+                TerminalStatus::Finished
             } else {
-                (
-                    vec![ev.call_id.clone()],
-                    Vec::new(),
-                    ExecCommandSource::Agent,
-                    None,
-                )
+                TerminalStatus::Error
             };
+            let name = rc.display_name();
+            (rc.command.clone(), rc.parsed_cmd.clone(), rc.source, Some(name))
+        } else {
+            (
+                vec![ev.call_id.clone()],
+                Vec::new(),
+                ExecCommandSource::Agent,
+                None,
+            )
+        };
 
         // Notify on background terminal completion
         if let Some(name) = terminal_name {
@@ -2899,10 +2884,7 @@ impl ChatWidget {
 
         // Build boxed panel output for each terminal
         let mut output_lines: Vec<String> = Vec::new();
-        output_lines.push(format!(
-            "**Background Terminals ({}):**\n",
-            self.running_commands.len()
-        ));
+        output_lines.push(format!("**Background Terminals ({}):**\n", self.running_commands.len()));
 
         for (call_id, rc) in &self.running_commands {
             let elapsed = rc.elapsed();
@@ -2950,11 +2932,7 @@ impl ChatWidget {
                         line.to_string()
                     };
                     let line_padding = box_width - 2 - line_truncated.len();
-                    output_lines.push(format!(
-                        "│ {}{} │",
-                        line_truncated,
-                        " ".repeat(line_padding)
-                    ));
+                    output_lines.push(format!("│ {}{} │", line_truncated, " ".repeat(line_padding)));
                 }
             }
 
@@ -3003,9 +2981,7 @@ impl ChatWidget {
                     name: format!("{} - {}", name, cmd),
                     description: Some(format!("ID: {}", id)),
                     actions: vec![Box::new(move |tx: &AppEventSender| {
-                        tx.send(AppEvent::KillTerminal {
-                            call_id: call_id.clone(),
-                        });
+                        tx.send(AppEvent::KillTerminal { call_id: call_id.clone() });
                     })],
                     dismiss_on_select: true,
                     ..Default::default()
@@ -3034,7 +3010,10 @@ impl ChatWidget {
             }
             rc.display_name()
         } else {
-            self.add_info_message(format!("Terminal with ID '{}' not found.", call_id), None);
+            self.add_info_message(
+                format!("Terminal with ID '{}' not found.", call_id),
+                None,
+            );
             return;
         };
 
@@ -3050,8 +3029,8 @@ impl ChatWidget {
 
     /// Show available skills via /skills.
     pub(crate) fn add_skills_output(&mut self) {
-        use codex_core::skills::SkillLoadOutcome;
         use codex_core::skills::load_skills_for_cwd;
+        use codex_core::skills::SkillLoadOutcome;
 
         // Load skills for the current working directory
         let outcome = load_skills_for_cwd(&self.config.codex_home, &self.config.cwd);
@@ -3672,8 +3651,8 @@ impl ChatWidget {
 
     /// Open the experimental features popup via /experimental.
     pub(crate) fn open_experimental_popup(&mut self) {
-        use codex_core::features::FEATURES;
         use codex_core::features::Stage;
+        use codex_core::features::FEATURES;
 
         let mut items: Vec<SelectionItem> = Vec::new();
 
@@ -3718,7 +3697,10 @@ impl ChatWidget {
         }
 
         if items.is_empty() {
-            self.add_info_message("No experimental features available.".to_string(), None);
+            self.add_info_message(
+                "No experimental features available.".to_string(),
+                None,
+            );
             return;
         }
 
@@ -4379,10 +4361,7 @@ impl ChatWidget {
     }
 
     /// Handle response from memory remember operation.
-    fn on_memory_remember_response(
-        &mut self,
-        resp: codex_protocol::protocol::MemoryRememberResponseEvent,
-    ) {
+    fn on_memory_remember_response(&mut self, resp: codex_protocol::protocol::MemoryRememberResponseEvent) {
         if resp.success {
             self.add_info_message(
                 format!("Memory saved (ID: {})", resp.memory_id.unwrap_or_default()),
@@ -5268,9 +5247,7 @@ fn feature_description(feature: codex_core::features::Feature) -> &'static str {
         Feature::ViewImageTool => "Include the view_image tool for image viewing",
         Feature::WebSearchRequest => "Allow the model to request web searches",
         Feature::ExecPolicy => "Gate the execpolicy enforcement for shell commands",
-        Feature::SandboxCommandAssessment => {
-            "Enable model-based risk assessments for sandboxed commands"
-        }
+        Feature::SandboxCommandAssessment => "Enable model-based risk assessments for sandboxed commands",
         Feature::WindowsSandbox => "Enable Windows sandbox (restricted token)",
         Feature::RemoteCompaction => "Remote compaction enabled (ChatGPT auth only)",
         Feature::ParallelToolCalls => "Allow model to call multiple tools in parallel",

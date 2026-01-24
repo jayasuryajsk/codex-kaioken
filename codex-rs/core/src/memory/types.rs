@@ -5,8 +5,7 @@
 
 use std::path::PathBuf;
 
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// The type of memory being stored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -160,15 +159,9 @@ pub enum MemorySource {
     /// Memory extracted from reading a file.
     FileRead { path: PathBuf },
     /// Memory extracted from editing a file.
-    FileEdit {
-        path: PathBuf,
-        diff_summary: Option<String>,
-    },
+    FileEdit { path: PathBuf, diff_summary: Option<String> },
     /// Memory extracted from a successful command.
-    CommandSuccess {
-        command: String,
-        output_summary: Option<String>,
-    },
+    CommandSuccess { command: String, output_summary: Option<String> },
     /// Memory extracted from a failed command.
     CommandFailure { command: String, error: String },
     /// Memory extracted from a failed command that was later fixed.
@@ -179,17 +172,11 @@ pub enum MemorySource {
         fix_description: Option<String>,
     },
     /// Memory extracted from user correction.
-    UserCorrection {
-        original: String,
-        correction: String,
-    },
+    UserCorrection { original: String, correction: String },
     /// Memory explicitly stored by user via /remember command.
     UserExplicit { input: String },
     /// Memory detected from repeated patterns.
-    PatternDetected {
-        pattern_type: String,
-        occurrences: u32,
-    },
+    PatternDetected { pattern_type: String, occurrences: u32 },
 }
 
 impl MemorySource {
@@ -208,17 +195,12 @@ impl MemorySource {
             MemorySource::CommandFailure { command, .. } => {
                 format!("from failed `{}`", truncate_command(command))
             }
-            MemorySource::CommandFixed {
-                original_command, ..
-            } => {
+            MemorySource::CommandFixed { original_command, .. } => {
                 format!("from fixing `{}`", truncate_command(original_command))
             }
             MemorySource::UserCorrection { .. } => "from user correction".to_string(),
             MemorySource::UserExplicit { .. } => "explicitly remembered".to_string(),
-            MemorySource::PatternDetected {
-                pattern_type,
-                occurrences,
-            } => {
+            MemorySource::PatternDetected { pattern_type, occurrences } => {
                 format!("from detecting {} ({} times)", pattern_type, occurrences)
             }
         }

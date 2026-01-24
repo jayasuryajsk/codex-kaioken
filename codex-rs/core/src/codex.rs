@@ -2135,11 +2135,13 @@ mod handlers {
 
         let event = Event {
             id: sub_id,
-            msg: EventMsg::MemoryRememberResponse(crate::protocol::MemoryRememberResponseEvent {
-                success,
-                memory_id,
-                error,
-            }),
+            msg: EventMsg::MemoryRememberResponse(
+                crate::protocol::MemoryRememberResponseEvent {
+                    success,
+                    memory_id,
+                    error,
+                },
+            ),
         };
         sess.send_event_raw(event).await;
     }

@@ -8,11 +8,8 @@ use std::sync::Arc;
 
 use tracing::debug;
 
-use super::retriever::MemoryRetriever;
-use super::retriever::RetrievalContext;
-use super::types::MemoryConfig;
-use super::types::MemoryType;
-use super::types::ScoredMemory;
+use super::retriever::{MemoryRetriever, RetrievalContext};
+use super::types::{MemoryConfig, MemoryType, ScoredMemory};
 
 /// Injects relevant memories into the agent context.
 pub struct MemoryInjector {
@@ -72,7 +69,10 @@ impl MemoryInjector {
         // Group by type
         let mut by_type: HashMap<MemoryType, Vec<&ScoredMemory>> = HashMap::new();
         for sm in memories {
-            by_type.entry(sm.memory.memory_type).or_default().push(sm);
+            by_type
+                .entry(sm.memory.memory_type)
+                .or_default()
+                .push(sm);
         }
 
         let mut sections = Vec::new();
@@ -106,8 +106,14 @@ impl MemoryInjector {
                                 String::new()
                             }
                         ),
-                        MemoryType::Decision => format!("- **[DECISION]** {}", sm.memory.content),
-                        MemoryType::Preference => format!("- {}", sm.memory.content),
+                        MemoryType::Decision => format!(
+                            "- **[DECISION]** {}",
+                            sm.memory.content
+                        ),
+                        MemoryType::Preference => format!(
+                            "- {}",
+                            sm.memory.content
+                        ),
                         _ => format!("- {}", sm.memory.content),
                     };
                     section.push_str(&bullet);
@@ -154,7 +160,11 @@ impl MemoryInjector {
         }
 
         // Get recent memories (up to 10)
-        let recent: Vec<_> = memories.into_iter().take(10).map(|sm| sm.memory).collect();
+        let recent: Vec<_> = memories
+            .into_iter()
+            .take(10)
+            .map(|sm| sm.memory)
+            .collect();
 
         MemorySummary {
             total: recent.len(), // This is the retrieved count

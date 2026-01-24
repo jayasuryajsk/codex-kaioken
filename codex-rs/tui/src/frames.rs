@@ -57,7 +57,7 @@ pub(crate) const FRAMES_SHAPES: [&str; 36] = frames_for!("shapes");
 pub(crate) const FRAMES_SLUG: [&str; 36] = frames_for!("slug");
 
 pub(crate) const ALL_VARIANTS: &[&[&str]] = &[
-    &FRAMES_KAIOKEN, // Kaioken is now the default/first variant
+    &FRAMES_KAIOKEN,  // Kaioken is now the default/first variant
     &FRAMES_DEFAULT,
     &FRAMES_CODEX,
     &FRAMES_OPENAI,

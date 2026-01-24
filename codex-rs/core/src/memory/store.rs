@@ -4,25 +4,15 @@
 //! with support for efficient querying by type, importance, and keywords.
 //! Embeddings are stored as BLOBs for semantic similarity search.
 
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use rusqlite::Connection;
-use rusqlite::OptionalExtension;
-use rusqlite::params;
+use rusqlite::{params, Connection, OptionalExtension};
 use tokio::sync::Mutex;
-use tracing::debug;
-use tracing::info;
-use tracing::warn;
+use tracing::{debug, info, warn};
 
-use super::embedding::EmbeddingService;
-use super::embedding::EmbeddingVector;
-use super::embedding::bytes_to_embedding;
-use super::embedding::embedding_to_bytes;
-use super::types::Memory;
-use super::types::MemoryConfig;
-use super::types::MemoryType;
+use super::embedding::{bytes_to_embedding, embedding_to_bytes, EmbeddingService, EmbeddingVector};
+use super::types::{Memory, MemoryConfig, MemoryType};
 
 /// SQLite-based memory store with embedding support.
 pub struct MemoryStore {
@@ -62,10 +52,7 @@ impl MemoryStore {
                 Some(Arc::new(svc))
             }
             Err(e) => {
-                warn!(
-                    "Embedding service unavailable: {} - falling back to keyword search",
-                    e
-                );
+                warn!("Embedding service unavailable: {} - falling back to keyword search", e);
                 None
             }
         };
@@ -161,10 +148,7 @@ impl MemoryStore {
                 memory.memory_type.as_str(),
                 memory.content,
                 memory.context,
-                memory
-                    .source_file
-                    .as_ref()
-                    .map(|p| p.to_string_lossy().to_string()),
+                memory.source_file.as_ref().map(|p| p.to_string_lossy().to_string()),
                 memory.importance,
                 memory.use_count,
                 memory.created_at,
@@ -174,11 +158,7 @@ impl MemoryStore {
             ],
         )?;
 
-        debug!(
-            "Inserted memory: {} ({})",
-            memory.id,
-            memory.memory_type.as_str()
-        );
+        debug!("Inserted memory: {} ({})", memory.id, memory.memory_type.as_str());
 
         // Write to docs directory (kept for compatibility)
         self.write_memory_doc(memory).await?;
@@ -205,9 +185,11 @@ impl MemoryStore {
         let conn = self.conn.lock().await;
 
         let result = conn
-            .query_row("SELECT * FROM memories WHERE id = ?1", params![id], |row| {
-                Self::row_to_memory(row)
-            })
+            .query_row(
+                "SELECT * FROM memories WHERE id = ?1",
+                params![id],
+                |row| Self::row_to_memory(row),
+            )
             .optional()?;
 
         Ok(result)
@@ -319,9 +301,7 @@ impl MemoryStore {
             })?
             .filter_map(|r| r.ok())
             .filter_map(|(m, bytes)| {
-                bytes
-                    .and_then(|b| bytes_to_embedding(&b))
-                    .map(|emb| (m, emb))
+                bytes.and_then(|b| bytes_to_embedding(&b)).map(|emb| (m, emb))
             })
             .collect()
         };
@@ -514,11 +494,7 @@ impl MemoryStore {
     }
 
     /// Check if a similar memory already exists (deduplication).
-    pub async fn exists_similar(
-        &self,
-        content: &str,
-        memory_type: MemoryType,
-    ) -> anyhow::Result<bool> {
+    pub async fn exists_similar(&self, content: &str, memory_type: MemoryType) -> anyhow::Result<bool> {
         let conn = self.conn.lock().await;
 
         // Simple similarity check: exact content match with same type
@@ -539,12 +515,11 @@ impl MemoryStore {
             conn.query_row("SELECT COUNT(*) FROM memories", [], |row| row.get(0))?;
 
         let counts_by_type: std::collections::HashMap<String, usize> = {
-            let mut stmt = conn.prepare("SELECT type, COUNT(*) FROM memories GROUP BY type")?;
-            stmt.query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, usize>(1)?))
-            })?
-            .filter_map(|r| r.ok())
-            .collect()
+            let mut stmt =
+                conn.prepare("SELECT type, COUNT(*) FROM memories GROUP BY type")?;
+            stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, usize>(1)?)))?
+                .filter_map(|r| r.ok())
+                .collect()
         };
 
         let avg_importance: f64 = conn
@@ -735,17 +710,13 @@ mod tests {
         let memory = Memory::new(MemoryType::Fact, "unique content".to_string());
         store.insert(&memory).await.unwrap();
 
-        assert!(
-            store
-                .exists_similar("unique content", MemoryType::Fact)
-                .await
-                .unwrap()
-        );
-        assert!(
-            !store
-                .exists_similar("different content", MemoryType::Fact)
-                .await
-                .unwrap()
-        );
+        assert!(store
+            .exists_similar("unique content", MemoryType::Fact)
+            .await
+            .unwrap());
+        assert!(!store
+            .exists_similar("different content", MemoryType::Fact)
+            .await
+            .unwrap());
     }
 }

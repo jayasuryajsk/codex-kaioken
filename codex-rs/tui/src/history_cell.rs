@@ -590,8 +590,13 @@ pub(crate) fn new_session_info(
     } = event;
 
     SessionInfoCell(if is_first_event {
-        let header =
-            SessionHeaderHistoryCell::new(model, cwd, approval_policy, snapshot, display_version());
+        let header = SessionHeaderHistoryCell::new(
+            model,
+            cwd,
+            approval_policy,
+            snapshot,
+            display_version(),
+        );
 
         CompositeHistoryCell {
             parts: vec![Box::new(header)],
@@ -616,10 +621,7 @@ pub(crate) fn new_user_prompt(message: String) -> UserHistoryCell {
 
 /// Create an initial session header immediately using config values.
 /// This shows the header instantly on startup without waiting for SessionConfiguredEvent.
-pub(crate) fn new_initial_header_from_config(
-    config: &Config,
-    snapshot: WelcomeSnapshot,
-) -> SessionInfoCell {
+pub(crate) fn new_initial_header_from_config(config: &Config, snapshot: WelcomeSnapshot) -> SessionInfoCell {
     let header = SessionHeaderHistoryCell::new(
         config.model.clone(),
         config.cwd.clone(),
@@ -1584,21 +1586,14 @@ impl HistoryCell for SubagentTasksCell {
 
             lines.push(Line::from(vec![
                 "┌─".fg(border_color),
-                Span::styled(
-                    name_part,
-                    ratatui::style::Style::default().bold().fg(border_color),
-                ),
+                Span::styled(name_part, ratatui::style::Style::default().bold().fg(border_color)),
                 fill.clone().fg(border_color),
-                Span::styled(
-                    status_part,
-                    ratatui::style::Style::default().fg(border_color),
-                ),
+                Span::styled(status_part, ratatui::style::Style::default().fg(border_color)),
                 "─┐".fg(border_color),
             ]));
 
             // Content lines
-            let content_lines =
-                task_box_content(task, box_width.saturating_sub(4), self.animations_enabled);
+            let content_lines = task_box_content(task, box_width.saturating_sub(4), self.animations_enabled);
             if content_lines.is_empty() {
                 // Empty box - show waiting message for running tasks
                 if matches!(task.status, SubagentTaskStatus::Running) {
@@ -1654,11 +1649,7 @@ fn spans_to_string(spans: &[Span<'_>]) -> String {
     spans.iter().map(|s| s.content.as_ref()).collect()
 }
 
-fn task_box_content(
-    task: &SubagentTaskState,
-    max_width: usize,
-    _animations_enabled: bool,
-) -> Vec<Vec<Span<'static>>> {
+fn task_box_content(task: &SubagentTaskState, max_width: usize, _animations_enabled: bool) -> Vec<Vec<Span<'static>>> {
     let mut content_lines: Vec<Vec<Span<'static>>> = Vec::new();
     let entries: Vec<String> = task.log.clone();
 
@@ -1671,20 +1662,15 @@ fn task_box_content(
 
     // Add "more" indicator if we truncated
     if entries.len() > MAX_SUBAGENT_DETAIL_LINES {
-        content_lines.push(vec![
-            format!("… {} more", entries.len() - MAX_SUBAGENT_DETAIL_LINES).dim(),
-        ]);
+        content_lines.push(vec![format!("… {} more", entries.len() - MAX_SUBAGENT_DETAIL_LINES).dim()]);
     }
 
     for entry in overflow {
         let rendered = render_markdown_text_with_width(entry, Some(max_width));
         for line in rendered.lines {
-            content_lines.push(
-                line.spans
-                    .into_iter()
-                    .map(|s| Span::styled(s.content.into_owned(), s.style))
-                    .collect(),
-            );
+            content_lines.push(line.spans.into_iter().map(|s| {
+                Span::styled(s.content.into_owned(), s.style)
+            }).collect());
         }
     }
 
@@ -1693,12 +1679,9 @@ fn task_box_content(
         if !summary.is_empty() && content_lines.is_empty() {
             let rendered = render_markdown_text_with_width(summary, Some(max_width));
             for line in rendered.lines {
-                content_lines.push(
-                    line.spans
-                        .into_iter()
-                        .map(|s| Span::styled(s.content.into_owned(), s.style))
-                        .collect(),
-                );
+                content_lines.push(line.spans.into_iter().map(|s| {
+                    Span::styled(s.content.into_owned(), s.style)
+                }).collect());
             }
         }
     }

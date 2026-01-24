@@ -42,9 +42,7 @@ pub(crate) fn install_system_skills(codex_home: &Path) -> Result<(), SystemSkill
     let marker_path = dest_system.join(SYSTEM_SKILLS_MARKER_FILENAME);
     let expected_fingerprint = embedded_system_skills_fingerprint();
 
-    if dest_system.is_dir()
-        && read_marker(&marker_path).is_ok_and(|marker| marker == expected_fingerprint)
-    {
+    if dest_system.is_dir() && read_marker(&marker_path).is_ok_and(|marker| marker == expected_fingerprint) {
         return Ok(());
     }
 

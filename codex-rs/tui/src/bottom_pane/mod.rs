@@ -461,8 +461,8 @@ impl BottomPane {
     }
 
     pub(crate) fn tick(&mut self) {
-        let needs_animation =
-            matches!(self.semantic_status, SemanticStatus::Indexing) || self.running_terminals > 0;
+        let needs_animation = matches!(self.semantic_status, SemanticStatus::Indexing)
+            || self.running_terminals > 0;
 
         if !needs_animation {
             return;

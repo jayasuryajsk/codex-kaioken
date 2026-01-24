@@ -1101,8 +1101,6 @@ pub(crate) fn build_specs(
     use crate::tools::handlers::ApplyPatchHandler;
     use crate::tools::handlers::GrepFilesHandler;
     use crate::tools::handlers::ListDirHandler;
-    use crate::tools::handlers::MEMORY_RECALL_TOOL;
-    use crate::tools::handlers::MEMORY_SAVE_TOOL;
     use crate::tools::handlers::McpHandler;
     use crate::tools::handlers::McpResourceHandler;
     use crate::tools::handlers::MemoryRecallHandler;
@@ -1116,6 +1114,8 @@ pub(crate) fn build_specs(
     use crate::tools::handlers::TestSyncHandler;
     use crate::tools::handlers::UnifiedExecHandler;
     use crate::tools::handlers::ViewImageHandler;
+    use crate::tools::handlers::MEMORY_RECALL_TOOL;
+    use crate::tools::handlers::MEMORY_SAVE_TOOL;
     use std::sync::Arc;
 
     let mut builder = ToolRegistryBuilder::new();

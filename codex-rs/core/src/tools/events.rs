@@ -462,15 +462,15 @@ async fn emit_patch_end(
                 for (path, change) in changes_clone {
                     // Extract content and diff based on change type
                     let (content, diff) = match &change {
-                        FileChange::Add { content } => (
-                            Some(content.clone()),
-                            format!("File added: {}", path.display()),
-                        ),
-                        FileChange::Delete { content } => (
-                            Some(content.clone()),
-                            format!("File deleted: {}", path.display()),
-                        ),
-                        FileChange::Update { unified_diff, .. } => (None, unified_diff.clone()),
+                        FileChange::Add { content } => {
+                            (Some(content.clone()), format!("File added: {}", path.display()))
+                        }
+                        FileChange::Delete { content } => {
+                            (Some(content.clone()), format!("File deleted: {}", path.display()))
+                        }
+                        FileChange::Update { unified_diff, .. } => {
+                            (None, unified_diff.clone())
+                        }
                     };
 
                     let _ = mm.on_file_edit(&path, &diff).await;

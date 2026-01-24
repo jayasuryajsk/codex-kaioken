@@ -65,9 +65,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tracing::debug;
-use tracing::info;
-use tracing::warn;
+use tracing::{debug, info, warn};
 
 use crate::AuthManager;
 use crate::ModelProviderInfo;
@@ -84,8 +82,8 @@ pub use injector::MemorySummary;
 pub use llm_extractor::LlmMemoryExtractor;
 pub use retriever::MemoryRetriever;
 pub use retriever::RetrievalContext;
-pub use store::MemoryStats;
 pub use store::MemoryStore;
+pub use store::MemoryStats;
 pub use types::Memory;
 pub use types::MemoryConfig;
 pub use types::MemorySource;
@@ -173,10 +171,7 @@ impl MemoryManager {
             .await;
 
         if !memories.is_empty() {
-            debug!(
-                "Extracted {} memories from command execution",
-                memories.len()
-            );
+            debug!("Extracted {} memories from command execution", memories.len());
         }
     }
 
@@ -217,11 +212,7 @@ impl MemoryManager {
             return;
         }
 
-        if let Some(memory) = self
-            .extractor
-            .on_user_correction(original, correction)
-            .await
-        {
+        if let Some(memory) = self.extractor.on_user_correction(original, correction).await {
             debug!("Stored correction as memory: {}", memory.id);
         }
     }
@@ -270,7 +261,10 @@ impl MemoryManager {
             .await;
 
         if !memories.is_empty() {
-            info!("LLM extracted {} memories from turn", memories.len());
+            info!(
+                "LLM extracted {} memories from turn",
+                memories.len()
+            );
         }
     }
 
@@ -435,10 +429,7 @@ mod tests {
         let (manager, _dir) = create_test_manager().await;
 
         // Remember something
-        let memory = manager
-            .remember("always use explicit error handling")
-            .await
-            .unwrap();
+        let memory = manager.remember("always use explicit error handling").await.unwrap();
         assert_eq!(memory.memory_type, MemoryType::Preference);
 
         // Retrieve it

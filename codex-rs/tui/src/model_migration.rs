@@ -302,7 +302,9 @@ fn gpt5_migration_copy() -> ModelMigrationCopy {
     ModelMigrationCopy {
         heading: vec!["Kaioken Model Update".bold()],
         content: vec![
-            Line::from("Newer models are now available in Kaioken with improved capabilities."),
+            Line::from(
+                "Newer models are now available in Kaioken with improved capabilities.",
+            ),
             Line::from(
                 "You can continue using legacy models by specifying them directly with the -m option or in your config.toml.",
             ),

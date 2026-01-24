@@ -1,6 +1,5 @@
 [workspace]
 members = [
-    "gui/src-tauri",
     "backend-client",
     "ansi-escape",
     "async-utils",

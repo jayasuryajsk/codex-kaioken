@@ -8,30 +8,24 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::StreamExt;
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::time::timeout;
-use tracing::debug;
-use tracing::info;
-use tracing::warn;
+use tracing::{debug, info, warn};
 
 use crate::AuthManager;
 use crate::ModelProviderInfo;
 use crate::client::ModelClient;
-use crate::client_common::Prompt;
-use crate::client_common::ResponseEvent;
+use crate::client_common::{Prompt, ResponseEvent};
 use crate::config::Config;
 use codex_otel::otel_event_manager::OtelEventManager;
 use codex_protocol::ConversationId;
 use codex_protocol::config_types::ReasoningEffort;
-use codex_protocol::models::ContentItem;
-use codex_protocol::models::ResponseItem;
+use codex_protocol::models::{ContentItem, ResponseItem};
 use codex_protocol::protocol::SessionSource;
 
 use super::store::MemoryStore;
-use super::types::Memory;
-use super::types::MemoryType;
+use super::types::{Memory, MemoryType};
 
 /// Model to use for memory extraction.
 pub const MEMORY_EXTRACTION_MODEL: &str = "gpt-5.1-codex-mini";
@@ -149,7 +143,10 @@ impl LlmMemoryExtractor {
                     memories.push(memory);
                 }
             } else {
-                debug!("Skipping duplicate memory: {}", truncate(&em.content, 50));
+                debug!(
+                    "Skipping duplicate memory: {}",
+                    truncate(&em.content, 50)
+                );
             }
         }
 
@@ -363,7 +360,11 @@ fn response_item_text(item: &ResponseItem) -> Option<String> {
 
 /// Truncate a string for logging.
 fn truncate(s: &str, max_len: usize) -> &str {
-    if s.len() <= max_len { s } else { &s[..max_len] }
+    if s.len() <= max_len {
+        s
+    } else {
+        &s[..max_len]
+    }
 }
 
 #[cfg(test)]
@@ -375,7 +376,9 @@ mod tests {
         let summary = LlmMemoryExtractor::build_turn_summary(
             "How do I run the tests?",
             "You can run tests with npm test",
-            &[("bash".to_string(), "npm test".to_string(), true)],
+            &[
+                ("bash".to_string(), "npm test".to_string(), true),
+            ],
             &["package.json".to_string()],
         );
 
