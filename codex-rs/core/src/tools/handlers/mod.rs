@@ -1,35 +1,41 @@
 pub mod apply_patch;
+pub(crate) mod collab;
 mod grep_files;
 mod list_dir;
 mod mcp;
 mod mcp_resource;
-mod memory;
 mod plan;
 mod read_file;
-mod semantic_search;
+mod request_user_input;
 mod shell;
-mod subagent;
 mod test_sync;
 mod unified_exec;
 mod view_image;
 
 pub use plan::PLAN_TOOL;
-pub use memory::MEMORY_RECALL_TOOL;
-pub use memory::MEMORY_SAVE_TOOL;
+use serde::Deserialize;
 
+use crate::function_tool::FunctionCallError;
 pub use apply_patch::ApplyPatchHandler;
+pub use collab::CollabHandler;
 pub use grep_files::GrepFilesHandler;
 pub use list_dir::ListDirHandler;
 pub use mcp::McpHandler;
 pub use mcp_resource::McpResourceHandler;
-pub use memory::MemoryRecallHandler;
-pub use memory::MemorySaveHandler;
 pub use plan::PlanHandler;
 pub use read_file::ReadFileHandler;
-pub use semantic_search::SemanticSearchHandler;
+pub use request_user_input::RequestUserInputHandler;
 pub use shell::ShellCommandHandler;
 pub use shell::ShellHandler;
-pub use subagent::SubagentHandler;
 pub use test_sync::TestSyncHandler;
 pub use unified_exec::UnifiedExecHandler;
 pub use view_image::ViewImageHandler;
+
+fn parse_arguments<T>(arguments: &str) -> Result<T, FunctionCallError>
+where
+    T: for<'de> Deserialize<'de>,
+{
+    serde_json::from_str(arguments).map_err(|err| {
+        FunctionCallError::RespondToModel(format!("failed to parse function arguments: {err}"))
+    })
+}
