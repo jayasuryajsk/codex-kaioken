@@ -137,11 +137,7 @@ impl ChatWidget {
             return;
         }
         if !cmd.available_during_task() && self.bottom_pane.is_task_running() {
-            let message = format!(
-                "'/{}' is disabled while a task is in progress.",
-                cmd.command()
-            );
-            self.add_to_history(history_cell::new_error_event(message));
+            self.queue_slash_command_for_next_turn(format!("/{}", cmd.command()), Vec::new());
             self.bottom_pane.drain_pending_submission_state();
             self.request_redraw();
             return;
@@ -532,11 +528,12 @@ impl ChatWidget {
             return;
         }
         if !cmd.available_during_task() && self.bottom_pane.is_task_running() {
-            let message = format!(
-                "'/{}' is disabled while a task is in progress.",
-                cmd.command()
-            );
-            self.add_to_history(history_cell::new_error_event(message));
+            let text = if args.trim().is_empty() {
+                format!("/{}", cmd.command())
+            } else {
+                format!("/{} {}", cmd.command(), args.trim())
+            };
+            self.queue_slash_command_for_next_turn(text, text_elements);
             self.request_redraw();
             return;
         }
@@ -582,6 +579,19 @@ impl ChatWidget {
             self.bottom_pane
                 .prepare_inline_args_submission(/*record_history*/ false)
         }
+    }
+
+    fn queue_slash_command_for_next_turn(&mut self, text: String, text_elements: Vec<TextElement>) {
+        self.queue_user_message_with_options(
+            UserMessage {
+                text,
+                local_images: Vec::new(),
+                remote_image_urls: Vec::new(),
+                text_elements,
+                mention_bindings: Vec::new(),
+            },
+            QueuedInputAction::ParseSlash,
+        );
     }
 
     fn prepared_inline_user_message(

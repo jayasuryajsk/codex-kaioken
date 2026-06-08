@@ -356,6 +356,39 @@ async fn queued_slash_menu_cancel_drains_next_input() {
 }
 
 #[tokio::test]
+async fn enter_permissions_during_active_turn_opens_menu_after_turn() {
+    let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(Some("gpt-5.2")).await;
+    chat.thread_id = Some(ThreadId::new());
+    handle_turn_started(&mut chat, "turn-1");
+
+    submit_composer_text(&mut chat, "/permissions");
+
+    assert_eq!(chat.input_queue.queued_user_messages.len(), 1);
+    assert_eq!(
+        chat.input_queue
+            .queued_user_messages
+            .front()
+            .unwrap()
+            .action,
+        QueuedInputAction::ParseSlash
+    );
+    assert_eq!(
+        chat.input_queue.queued_user_messages.front().unwrap().text,
+        "/permissions"
+    );
+    assert_matches!(op_rx.try_recv(), Err(TryRecvError::Empty));
+
+    complete_turn_with_message(&mut chat, "turn-1", Some("done"));
+
+    let popup = render_bottom_popup(&chat, /*width*/ 80);
+    assert!(
+        popup.contains("Update Model Permissions"),
+        "expected permissions menu to open; popup:\n{popup}"
+    );
+    assert!(chat.input_queue.queued_user_messages.is_empty());
+}
+
+#[tokio::test]
 async fn queued_slash_menu_selection_drains_next_input() {
     let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(Some("gpt-5.2")).await;
     chat.thread_id = Some(ThreadId::new());

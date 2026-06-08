@@ -2883,10 +2883,8 @@ impl ChatComposer {
         let command = self
             .slash_input()
             .bare_command(self.draft.textarea.text())?;
-        if self.reject_slash_command_if_unavailable(&command) {
-            self.stage_slash_command_history(&command);
-            self.record_pending_slash_command_history();
-            return Some(InputResult::None);
+        if let Some(result) = self.queue_slash_command_if_unavailable(&command) {
+            return Some(result);
         }
         self.stage_slash_command_history(&command);
         self.draft.textarea.set_text_clearing_elements("");
@@ -2903,10 +2901,8 @@ impl ChatComposer {
         let text = self.draft.textarea.text().to_string();
         let inline_command = self.slash_input().inline_command(&text)?;
         let command = inline_command.command;
-        if self.reject_slash_command_if_unavailable(&command) {
-            self.stage_slash_command_history(&command);
-            self.record_pending_slash_command_history();
-            return Some(InputResult::None);
+        if let Some(result) = self.queue_slash_command_if_unavailable(&command) {
+            return Some(result);
         }
 
         self.stage_slash_command_history(&command);
@@ -2951,18 +2947,20 @@ impl ChatComposer {
         Some((trimmed_rest.to_string(), args_elements))
     }
 
-    fn reject_slash_command_if_unavailable(&self, command: &SlashCommandItem) -> bool {
+    fn queue_slash_command_if_unavailable(
+        &mut self,
+        command: &SlashCommandItem,
+    ) -> Option<InputResult> {
         if !self.is_task_running || command.available_during_task() {
-            return false;
+            return None;
         }
-        let message = format!(
-            "'/{}' is disabled while a task is in progress.",
-            command.command()
-        );
-        self.app_event_tx.send(AppEvent::InsertHistoryCell(Box::new(
-            history_cell::new_error_event(message),
-        )));
-        true
+        let (text, text_elements) =
+            self.prepare_submission_text_with_options(true, SlashValidation::Deferred)?;
+        Some(InputResult::Queued {
+            text,
+            text_elements,
+            action: QueuedInputAction::ParseSlash,
+        })
     }
 
     /// Stage the current slash-command text for later local recall.
@@ -8296,7 +8294,7 @@ mod tests {
     }
 
     #[test]
-    fn slash_command_disabled_while_task_running_keeps_text() {
+    fn slash_command_disabled_while_task_running_queues_for_later() {
         use crossterm::event::KeyCode;
         use crossterm::event::KeyEvent;
         use crossterm::event::KeyModifiers;
@@ -8319,24 +8317,23 @@ mod tests {
         let (result, _needs_redraw) =
             composer.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 
-        assert_eq!(InputResult::None, result);
-        assert_eq!("/review these changes", composer.draft.textarea.text());
-
-        let mut found_error = false;
-        while let Ok(event) = rx.try_recv() {
-            if let AppEvent::InsertHistoryCell(cell) = event {
-                let message = cell
-                    .display_lines(/*width*/ 80)
-                    .into_iter()
-                    .map(|line| line.to_string())
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                assert!(message.contains("disabled while a task is in progress"));
-                found_error = true;
-                break;
+        match result {
+            InputResult::Queued {
+                text,
+                text_elements,
+                action,
+            } => {
+                assert_eq!(text, "/review these changes");
+                assert!(text_elements.is_empty());
+                assert_eq!(action, QueuedInputAction::ParseSlash);
             }
+            other => panic!("expected slash command to queue, got {other:?}"),
         }
-        assert!(found_error, "expected error history cell to be sent");
+        assert!(composer.draft.textarea.is_empty());
+        assert!(
+            rx.try_recv().is_err(),
+            "queuing should not report slash command disabled errors"
+        );
     }
 
     #[test]
