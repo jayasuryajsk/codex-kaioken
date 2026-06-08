@@ -9,9 +9,9 @@ If you want Codex in your code editor (VS Code, Cursor, Windsurf), <a href="http
 
 ---
 
-## Kaioken Recall v5 fork
+## Kaioken Recall fork
 
-This fork tracks the current upstream OpenAI Codex codebase and adds **Kaioken Recall v5**, a retrieval bridge for Codex agents.
+This fork tracks the current upstream OpenAI Codex codebase and adds **Kaioken Recall**, a retrieval bridge for Codex agents.
 
 Kaioken Recall gives Codex a compact ranked evidence pack before it starts broad shell search or noisy file reads. The implementation adds a `kaioken_recall` tool to Codex, routes it to a standalone `kaioken-recall` engine when available, and keeps a native fallback path inside Codex.
 
