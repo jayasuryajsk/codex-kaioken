@@ -92,3 +92,6 @@ CHANGELOG.ignore.md
 # Python bytecode files
 __pycache__/
 *.pyc
+
+# Kaioken Recall local index
+.kaioken-recall/

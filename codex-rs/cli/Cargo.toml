@@ -9,6 +9,10 @@ build = "build.rs"
 name = "codex"
 path = "src/main.rs"
 
+[[bin]]
+name = "codex-kaioken"
+path = "src/main.rs"
+
 [lib]
 name = "codex_cli"
 path = "src/lib.rs"

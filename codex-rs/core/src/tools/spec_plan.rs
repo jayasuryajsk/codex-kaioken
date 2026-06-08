@@ -9,6 +9,7 @@ use crate::tools::handlers::CodeModeWaitHandler;
 use crate::tools::handlers::DynamicToolHandler;
 use crate::tools::handlers::ExecCommandHandler;
 use crate::tools::handlers::ExecCommandHandlerOptions;
+use crate::tools::handlers::KaiokenRecallHandler;
 use crate::tools::handlers::ListAvailablePluginsToInstallHandler;
 use crate::tools::handlers::ListMcpResourceTemplatesHandler;
 use crate::tools::handlers::ListMcpResourcesHandler;
@@ -644,6 +645,7 @@ fn add_core_utility_tools(context: &CoreToolPlanContext<'_>, planned_tools: &mut
     let environment_mode = turn_context.tool_environment_mode();
 
     planned_tools.add(PlanHandler);
+    planned_tools.add(KaiokenRecallHandler);
 
     if turn_context.config.experimental_request_user_input_enabled {
         planned_tools.add(RequestUserInputHandler {
