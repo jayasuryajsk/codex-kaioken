@@ -9,6 +9,28 @@ If you want Codex in your code editor (VS Code, Cursor, Windsurf), <a href="http
 
 ---
 
+## Kaioken Recall v5 fork
+
+This fork tracks the current upstream OpenAI Codex codebase and adds **Kaioken Recall v5**, a retrieval bridge for Codex agents.
+
+Kaioken Recall gives Codex a compact ranked evidence pack before it starts broad shell search or noisy file reads. The implementation adds a `kaioken_recall` tool to Codex, routes it to a standalone `kaioken-recall` engine when available, and keeps a native fallback path inside Codex.
+
+Key files:
+
+- [`docs/kaioken-recall.md`](./docs/kaioken-recall.md) - architecture, usage, and verification notes.
+- [`codex-rs/core/src/tools/handlers/kaioken_recall.rs`](./codex-rs/core/src/tools/handlers/kaioken_recall.rs) - Codex handler bridge and fallback retrieval logic.
+- [`codex-rs/core/src/tools/handlers/kaioken_recall_spec.rs`](./codex-rs/core/src/tools/handlers/kaioken_recall_spec.rs) - tool schema.
+- [`codex-rs/core/src/tools/spec_plan.rs`](./codex-rs/core/src/tools/spec_plan.rs) - default tool-plan registration.
+
+Verified local proof on the upstream-based branch:
+
+- Standalone Kaioken Recall tests: `35/35` passed.
+- Codex Kaioken handler tests: `7/7` passed.
+- `codex-exec` build: passed.
+- Black-box smoke with shell disabled: returned `nested/proof/needle.txt` via retrieval.
+- 100-query CodeSearchNet/MTEB-style retrieval benchmark: `Recall@10 0.87`, `nDCG@10 0.6993`, `MRR@10 0.6442`.
+- 20-query Codex-agent comparison against regular Codex: equal `hit@5` at `20/20`, higher MRR for Kaioken (`0.9750` vs `0.9417`), lower uncached token use (`296,932` vs `573,606`), and lower elapsed time (`348.1s` vs `859.2s`).
+
 ## Quickstart
 
 ### Installing and running Codex CLI
